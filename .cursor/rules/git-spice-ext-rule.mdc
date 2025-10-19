@@ -11,30 +11,122 @@ This VSCode extension provides a UI for **git-spice**, a CLI tool for stacking G
 
 ### Git-Spice Core Concepts
 
-1. **Branchless Workflow Emulation**: git-spice helps manage a stack of branches meant to be merged sequentially from trunk/main to the top of the stack (upstack).
+git-spice introduces several concepts on top of Git to enable efficient branch stacking workflows. Understanding these concepts is essential for building the VSCode extension UI.
 
-2. **Stack Terminology**:
-   - **Trunk**: The base branch (typically `main` or `master`) where all changes eventually merge
-   - **Upstack**: Branches above the current branch in the dependency chain
-   - **Downstack**: Branches below the current branch toward the trunk
-   - **Stack**: A linear chain of branches with dependencies
-   - **Restack**: Rebasing branches to maintain linear history after changes
+#### Core Terminology
 
-3. **Key Operations**:
-   - **Navigation**: `gs up`, `gs down`, `gs top`, `gs bottom`, `gs trunk`
-   - **Branch Management**: `gs branch create`, `gs branch checkout`, `gs branch delete`, `gs branch restack`
-   - **Stack Operations**: `gs stack submit`, `gs stack restack`, `gs upstack/downstack` commands
-   - **Commit Operations**: `gs commit create`, `gs commit amend`, `gs commit split`, `gs commit fixup`
-   - **Repository**: `gs repo init`, `gs repo sync` (pulls latest, deletes merged branches)
-   - **Logging**: `gs log short` (ls), `gs log long` (ll) - supports `--json` flag for structured output
+1. **Branch**
+   - A regular Git branch that can have a _base_: the branch it was created from
+   - The branch currently checked out is called the _current branch_
+   - All branches except trunk have a base branch
 
-4. **Change Request (CR) Management**: git-spice integrates with GitHub/GitLab to manage PRs/MRs, including:
-   - Creating and updating change requests
-   - Tracking CR status
-   - Navigation comments for stack context
-   - Automatic CR updates when restacking
+2. **Trunk**
+   - The default branch of a repository (typically `main` or `master`)
+   - The only branch that does not have a base branch
+   - All changes eventually merge back to trunk
+   - Acts as the foundation for all stacks
 
-5. **JSON Output**: Many commands support `--json` flag for machine-readable output (used by this extension via `gs ll -a --json`)
+3. **Current Branch**
+   - The branch that is currently checked out in the working directory
+   - Used as the reference point for upstack/downstack operations
+   - All navigation and stack operations are relative to the current branch
+
+4. **Stack**
+   - A collection of branches stacked on top of each other in a linear chain
+   - Each branch (except trunk) has exactly one base branch
+   - A branch can have multiple branches stacked on top of it
+   - Forms a dependency tree where changes flow from trunk → upstack
+   - Example: trunk → branch-a → branch-b → branch-c
+
+5. **Downstack**
+   - All branches below the current branch in the dependency chain
+   - Includes all ancestors back to (but not including) the trunk branch
+   - These are the branches the current branch depends on
+   - Changes in downstack branches may require restacking upstack
+
+6. **Upstack**
+   - All branches stacked on top of the current branch
+   - Includes direct children and their entire upstack recursively
+   - If a branch has multiple children, they are all upstack from it
+   - Changes in the current branch typically require restacking upstack
+
+7. **Sibling Branches**
+   - Branches that share the same base branch
+   - Siblings are independent of each other but depend on the same parent
+   - Example: If branch-b and branch-c both branch from branch-a, they are siblings
+
+8. **Restacking**
+   - The process of rebasing branches on top of their base branch
+   - Maintains linear history when base branches are updated
+   - Keeps branches up-to-date with changes in their downstack
+   - Can be applied to a single branch, upstack, or entire stack
+   - Essential for keeping Change Requests synchronized
+
+9. **Change Request (CR)**
+   - A merge-able unit of work submitted to GitHub or GitLab
+   - Each CR corresponds to a single branch
+   - On GitHub: Pull Requests (PRs)
+   - On GitLab: Merge Requests (MRs)
+   - git-spice uses "Change Request" as a platform-agnostic term
+
+#### Key Operations
+
+1. **Navigation Commands**:
+   - `gs up [n]` - Move up n branches in the stack (default: 1)
+   - `gs down [n]` - Move down n branches in the stack (default: 1)
+   - `gs top` - Jump to the topmost branch in the current stack
+   - `gs bottom` - Jump to the bottom branch in the current stack
+   - `gs trunk` - Checkout the trunk branch
+
+2. **Branch Management**:
+   - `gs branch create [name]` - Create a new branch on top of current
+   - `gs branch checkout <name>` - Switch to an existing branch
+   - `gs branch delete` - Delete a branch and restack its upstack
+   - `gs branch restack` - Rebase current branch on its base
+   - `gs branch rename` - Rename a branch
+
+3. **Stack Operations**:
+   - `gs stack submit` - Submit all branches in stack as CRs
+   - `gs stack restack` - Restack all branches in current stack
+   - `gs upstack restack` - Restack all upstack branches
+   - `gs downstack restack` - Restack all downstack branches
+
+4. **Commit Operations**:
+   - `gs commit create` - Create a new commit
+   - `gs commit amend` - Amend the current commit
+   - `gs commit split` - Split a commit into multiple commits
+   - `gs commit fixup` - Create a fixup commit for a previous commit
+
+5. **Repository Operations**:
+   - `gs repo init` - Initialize git-spice in a repository
+   - `gs repo sync` - Pull latest changes from remote and delete merged branches
+   - Sync keeps the local repository in sync with remote state
+
+6. **Logging and Inspection**:
+   - `gs log short` (alias: `gs ls`) - Short branch listing
+   - `gs log long` (alias: `gs ll`) - Detailed branch listing with commit info
+   - Both support `--json` flag for machine-readable output
+   - Use `gs ll -a --json` to get all branches with full details (used by this extension)
+
+#### Change Request Integration
+
+git-spice integrates with GitHub and GitLab to manage Change Requests:
+
+- **CR Creation**: Automatically creates PRs/MRs for branches
+- **CR Updates**: Updates PRs/MRs when branches are restacked or amended
+- **Status Tracking**: Monitors CR state (open, merged, closed)
+- **Navigation Comments**: Adds comments showing stack context and relationships
+- **Automatic Rebasing**: Updates CRs when their base branches change
+- **Stacked CRs**: Multiple CRs can be submitted in sequence, maintaining dependencies
+
+#### JSON Output
+
+Many git-spice commands support `--json` flag for structured output:
+
+- Enables programmatic access to git-spice data
+- This extension uses `gs ll -a --json` to fetch branch information
+- JSON schema provides branch metadata, commit info, CR status, and relationships
+- Essential for building UI representations of stacks
 
 ### CLI Reference
 
