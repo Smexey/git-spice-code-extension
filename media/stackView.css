@@ -1,0 +1,240 @@
+:root {
+  color-scheme: light dark;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: var(--vscode-font-family);
+  font-size: 0.85rem;
+  color: var(--vscode-foreground);
+  background-color: transparent;
+}
+
+button {
+  font: inherit;
+}
+
+/* removed toolbar and info header */
+
+.error {
+  padding: 0.4rem 0.6rem;
+  color: var(--vscode-errorForeground);
+  font-size: 0.8rem;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.stack-list {
+  list-style: none;
+  margin: 0;
+  padding: 0.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.stack-item {
+  border: none;
+  background: transparent;
+}
+
+.branch-card {
+  border: 1px solid var(--vscode-treeIndentGuidesStroke);
+  border-radius: 6px;
+  padding: 0.35rem 0.5rem;
+  background: var(--vscode-editor-background);
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  cursor: pointer;
+  transition: border-color 0.12s ease;
+}
+
+.branch-card .branch-commits {
+  margin-top: 0.3rem;
+  border-top: 1px solid var(--vscode-treeIndentGuidesStroke);
+  padding-top: 0.35rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition: max-height 0.2s ease-out, opacity 0.2s ease-out;
+}
+
+.branch-card.expanded .branch-commits {
+  max-height: 18rem;
+  opacity: 1;
+}
+
+.branch-card.is-current {
+  border-color: var(--vscode-testing-iconPassed, var(--vscode-focusBorder));
+  box-shadow: 0 0 0 1px var(--vscode-testing-iconPassed, var(--vscode-focusBorder));
+}
+
+.branch-card.needs-restack {
+  border-color: var(--vscode-problemsWarningIcon-foreground);
+}
+
+.branch-card.dragging {
+  opacity: 0.6;
+}
+
+.branch-card.drag-over::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 2px dashed var(--vscode-focusBorder);
+  border-radius: 6px;
+  pointer-events: none;
+}
+
+.branch-header {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.branch-name {
+  font-weight: 600;
+  font-size: 0.8rem;
+  word-break: break-word;
+}
+
+.branch-tags {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.2rem;
+  flex-wrap: wrap;
+}
+
+.tag {
+  font-size: 0.5rem;
+  padding: 0.05rem 0.28rem;
+  border-radius: 999px;
+  background-color: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.tag-primary {
+  background-color: var(--vscode-testing-iconPassed, var(--vscode-button-background));
+  color: var(--vscode-editor-background);
+}
+
+.tag-warning {
+  background-color: var(--vscode-problemsWarningIcon-foreground);
+  color: var(--vscode-editor-background);
+}
+
+.tag-accent {
+  background-color: var(--vscode-textLink-foreground);
+  color: var(--vscode-editor-background);
+}
+
+.branch-meta {
+  display: flex;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+  font-size: 0.65rem;
+  color: var(--vscode-descriptionForeground);
+}
+
+.branch-pr-link {
+  border: none;
+  background: transparent;
+  color: var(--vscode-textLink-foreground);
+  cursor: pointer;
+  padding: 0;
+  font-size: 0.7rem;
+}
+
+.branch-pr-link:hover {
+  text-decoration: underline;
+}
+
+.branch-toggle {
+  border: none;
+  background: transparent;
+  color: var(--vscode-icon-foreground);
+  cursor: pointer;
+  padding: 0;
+  height: 1rem;
+  width: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.branch-toggle.codicon {
+  transition: transform 0.1s ease;
+  transform-origin: 50% 50%;
+}
+
+.branch-toggle.codicon.expanded {
+  transform: rotate(90deg);
+}
+
+.branch-toggle:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
+}
+
+.branch-toggle-spacer {
+  width: 1rem;
+  height: 1rem;
+}
+
+.commit-item {
+  font-size: 0.7rem;
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  color: var(--vscode-descriptionForeground);
+  border: none;
+  background: transparent;
+  text-align: left;
+  padding: 0.15rem 0;
+  cursor: pointer;
+}
+
+.commit-item:hover {
+  color: var(--vscode-textLink-foreground);
+}
+
+.commit-subject {
+  flex: 1;
+  word-break: break-word;
+}
+
+.commit-sha {
+  font-family: var(--vscode-editor-font-family, monospace);
+  opacity: 0.8;
+}
+
+.branch-more {
+  align-self: flex-start;
+  border: none;
+  background: transparent;
+  color: var(--vscode-textLink-foreground);
+  cursor: pointer;
+  font-size: 0.7rem;
+  padding: 0;
+}
+
+.branch-more:hover {
+  text-decoration: underline;
+}
+
+.empty {
+  padding: 0.9rem 0.6rem;
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.85rem;
+}

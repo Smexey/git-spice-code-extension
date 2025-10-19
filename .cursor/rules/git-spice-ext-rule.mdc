@@ -1,0 +1,310 @@
+---
+alwaysApply: true
+description: Git-Spice VSCode Extension Development Guidelines
+---
+
+# Git-Spice VSCode Extension Development Guidelines
+
+## Project Overview
+
+This VSCode extension provides a UI for **git-spice**, a CLI tool for stacking Git branches.
+
+### Git-Spice Core Concepts
+
+1. **Branchless Workflow Emulation**: git-spice helps manage a stack of branches meant to be merged sequentially from trunk/main to the top of the stack (upstack).
+
+2. **Stack Terminology**:
+   - **Trunk**: The base branch (typically `main` or `master`) where all changes eventually merge
+   - **Upstack**: Branches above the current branch in the dependency chain
+   - **Downstack**: Branches below the current branch toward the trunk
+   - **Stack**: A linear chain of branches with dependencies
+   - **Restack**: Rebasing branches to maintain linear history after changes
+
+3. **Key Operations**:
+   - **Navigation**: `gs up`, `gs down`, `gs top`, `gs bottom`, `gs trunk`
+   - **Branch Management**: `gs branch create`, `gs branch checkout`, `gs branch delete`, `gs branch restack`
+   - **Stack Operations**: `gs stack submit`, `gs stack restack`, `gs upstack/downstack` commands
+   - **Commit Operations**: `gs commit create`, `gs commit amend`, `gs commit split`, `gs commit fixup`
+   - **Repository**: `gs repo init`, `gs repo sync` (pulls latest, deletes merged branches)
+   - **Logging**: `gs log short` (ls), `gs log long` (ll) - supports `--json` flag for structured output
+
+4. **Change Request (CR) Management**: git-spice integrates with GitHub/GitLab to manage PRs/MRs, including:
+   - Creating and updating change requests
+   - Tracking CR status
+   - Navigation comments for stack context
+   - Automatic CR updates when restacking
+
+5. **JSON Output**: Many commands support `--json` flag for machine-readable output (used by this extension via `gs ll -a --json`)
+
+### CLI Reference
+
+For complete command reference: https://abhinav.github.io/git-spice/cli/reference/
+
+## TypeScript & VSCode Extension Guidelines
+
+### General Principles
+
+1. **Modern TypeScript**: Use TypeScript 5.x+ features with strict type checking enabled
+2. **VSCode API Patterns**: Follow official VSCode extension patterns and best practices
+3. **Async-First**: VSCode APIs are async; use `async/await` consistently, avoid blocking operations
+4. **Disposables**: Always register disposables via `context.subscriptions` for proper cleanup
+5. **Error Handling**: Handle errors gracefully with user-friendly messages via `vscode.window.show*` APIs
+
+### Code Style
+
+1. **Type Safety**:
+   - Enable strict TypeScript checking (`strict: true` in tsconfig.json)
+   - Avoid `any`; use `unknown` when type is truly unknown
+   - Use explicit return types for public functions
+   - Prefer interfaces for object shapes, types for unions/intersections
+   - Use type guards to narrow types safely
+
+2. **Naming Conventions**:
+   - PascalCase for classes, interfaces, types: `StackViewProvider`, `BranchRecord`
+   - camelCase for variables, functions, methods: `workspaceFolder`, `execGitSpice`
+   - UPPER_SNAKE_CASE for constants: `MAX_RETRY_COUNT`
+   - Prefix private class members with `private` keyword (not `_` underscore)
+
+3. **Code Organization**:
+   - One class per file for providers and major components
+   - Group related utilities in `utils/` directory
+   - Keep types in dedicated `types.ts` files or co-located with implementation
+   - Separate view logic (webview providers) from business logic (git-spice interactions)
+
+4. **Functions**:
+   - Prefer pure functions where possible
+   - Keep functions small and focused (single responsibility)
+   - Use early returns to reduce nesting
+   - Document complex logic with inline comments
+   - Extract magic values to named constants
+
+5. **Async Patterns**:
+   - Use `async/await` over raw Promises
+   - Handle promise rejections with try-catch or `.catch()`
+   - Use `void` keyword when intentionally ignoring promises: `void this.refresh()`
+   - Avoid fire-and-forget promises without error handling
+
+### VSCode Extension Patterns
+
+1. **Extension Activation**:
+   - Keep `activate()` lightweight; defer heavy initialization
+   - Register all disposables in `context.subscriptions`
+   - Use activation events to load only when needed
+   - Provide a no-op `deactivate()` function
+
+2. **Webview Views**:
+   - Implement `WebviewViewProvider` for sidebar views
+   - Set appropriate CSP (Content Security Policy) for security
+   - Use nonces for inline scripts/styles
+   - Handle webview disposal and recreation gracefully
+   - Use `postMessage` for bidirectional communication
+
+3. **Commands**:
+   - Register commands in `package.json` under `contributes.commands`
+   - Use namespaced command IDs: `git-spice.commandName`
+   - Provide user-friendly titles
+   - Handle command errors with user notifications
+
+4. **State Management**:
+   - Keep state in provider classes
+   - Push state updates to webviews via `postMessage`
+   - Handle webview lifecycle (dispose/recreate) gracefully
+   - Cache data when appropriate to reduce git-spice invocations
+
+5. **Error Handling**:
+   - Show user-friendly error messages via `vscode.window.showErrorMessage()`
+   - Log detailed errors to output channel for debugging
+   - Gracefully degrade when git-spice is not available
+   - Provide actionable error messages when possible
+
+### Git-Spice Integration
+
+1. **CLI Invocation**:
+   - Use Node's `child_process.execFile` (promisified) for safety
+   - Always specify workspace folder as `cwd`
+   - Use `--json` flag for structured output when available
+   - Handle command failures gracefully (git-spice may not be installed)
+   - Parse and validate JSON output with proper types
+
+2. **Command Selection**:
+   - Use `gs ll -a --json` (log long, all branches) for branch listing
+   - Use `gs ls -a --json` (log short) for simpler branch views if needed
+   - Invoke navigation commands (`up`, `down`, etc.) directly
+   - Invoke branch/commit operations with appropriate flags
+   - Consider `--no-prompt` flag for non-interactive operations
+
+3. **Data Parsing**:
+   - Define TypeScript types matching git-spice JSON schema
+   - Validate JSON structure before use (consider using zod or similar)
+   - Handle missing optional fields gracefully
+   - Map git-spice data to display models appropriate for UI
+
+4. **Workspace Context**:
+   - Check for workspace folder before invoking git-spice
+   - Handle workspace folder changes (listen to `onDidChangeWorkspaceFolders`)
+   - Support multi-root workspaces if feasible
+
+### Webview Development
+
+1. **HTML/CSS/JS**:
+   - Keep webview assets in `media/` directory
+   - Use VSCode CSS variables for theming: `var(--vscode-*)`
+   - Use Codicons for icons: `<i class="codicon codicon-refresh"></i>`
+   - Write vanilla JS or minimal frameworks for webview scripts
+   - Minimize dependencies in webview context
+
+2. **Communication**:
+   - Use message passing between extension and webview
+   - Define clear message types and payloads
+   - Handle messages with switch statements on `message.type`
+   - Validate message data before use
+
+3. **Performance**:
+   - Minimize DOM manipulation; batch updates when possible
+   - Use event delegation for repeated elements
+   - Avoid heavy computation in webview; push to extension host
+   - Cache rendered elements when appropriate
+
+4. **Security**:
+   - Always set strict CSP headers
+   - Use nonces for inline scripts/styles
+   - Sanitize user-provided content before rendering
+   - Use `webview.asWebviewUri()` for resource URIs
+
+### Testing
+
+1. **Unit Tests**:
+   - Write tests in `src/test/` directory
+   - Use Mocha as the test runner (VSCode standard)
+   - Test utilities and pure functions thoroughly
+   - Mock VSCode APIs using appropriate patterns
+
+2. **Integration Tests**:
+   - Test extension activation and command registration
+   - Test git-spice CLI invocation with fixtures
+   - Validate data parsing and transformation
+
+### File Organization
+
+```
+src/
+├── extension.ts          # Extension entry point (activate/deactivate)
+├── gitSpiceSchema.ts     # Type definitions and parsers for git-spice JSON
+├── stackView/            # Stack view webview provider and logic
+│   ├── StackViewProvider.ts
+│   ├── state.ts          # State transformation for display
+│   └── types.ts          # View-specific types
+├── utils/                # Shared utilities
+│   ├── gitSpice.ts       # CLI invocation helpers
+│   └── readFileSync.ts   # File reading utilities
+└── test/                 # Tests
+    ├── extension.test.ts
+    └── gitSpiceSchema.test.ts
+
+media/                    # Webview assets (HTML, CSS, JS)
+├── stackView.html
+├── stackView.css
+└── stackView.js
+```
+
+### Best Practices
+
+1. **DRY Principle**: Extract common patterns into utilities
+2. **Type-First**: Define types before implementation
+3. **Error Context**: Provide context in error messages (e.g., which command failed)
+4. **Progressive Enhancement**: Gracefully handle missing git-spice installation
+5. **User Feedback**: Show loading states, success/error notifications
+6. **Documentation**: Document public APIs, complex algorithms, and git-spice mappings
+7. **Semantic Versioning**: Follow semver for extension releases
+8. **Changelog**: Maintain CHANGELOG.md for user-facing changes
+
+### Common Patterns
+
+#### Executing git-spice Commands
+
+```typescript
+async function execGitSpice(
+  folder: vscode.WorkspaceFolder,
+  args: string[]
+): Promise<Result<T, string>> {
+  try {
+    const { stdout } = await execFileAsync('gs', args, {
+      cwd: folder.uri.fsPath,
+    });
+    return { value: parseOutput(stdout) };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { error: `Command failed: ${message}` };
+  }
+}
+```
+
+#### Webview Message Handling
+
+```typescript
+webviewView.webview.onDidReceiveMessage((message) => {
+  switch (message.type) {
+    case 'action':
+      void this.handleAction(message.payload);
+      return;
+    default:
+      console.warn('Unknown message type:', message.type);
+      return;
+  }
+});
+```
+
+#### Result Type Pattern
+
+```typescript
+type Result<T, E> = 
+  | { value: T }
+  | { error: E };
+
+// Usage encourages explicit error handling
+const result = await fetchData();
+if ('error' in result) {
+  // Handle error
+} else {
+  // Use result.value
+}
+```
+
+### Git-Spice Command Mapping
+
+When implementing UI actions, map to appropriate git-spice commands:
+
+- **Refresh/List**: `gs ll -a --json` or `gs ls -a --json`
+- **Navigate Up**: `gs up [n]`
+- **Navigate Down**: `gs down [n]`
+- **Go to Top**: `gs top`
+- **Go to Bottom**: `gs bottom`
+- **Go to Trunk**: `gs trunk`
+- **Checkout Branch**: `gs branch checkout <name>`
+- **Create Branch**: `gs branch create [name]`
+- **Restack**: `gs branch restack` or `gs upstack restack`
+- **Submit PR**: `gs branch submit` or `gs stack submit`
+- **Sync Repo**: `gs repo sync`
+
+### Performance Considerations
+
+1. **Debounce Refreshes**: Avoid excessive git-spice invocations on rapid events
+2. **Cache Results**: Cache branch list for short periods
+3. **Lazy Loading**: Load detailed info only when needed
+4. **Incremental Updates**: Update only changed portions of UI when possible
+5. **Background Operations**: Use Progress API for long-running operations
+
+### Accessibility
+
+1. Use semantic HTML in webviews
+2. Provide ARIA labels where appropriate
+3. Support keyboard navigation
+4. Respect VSCode theme colors
+5. Ensure sufficient contrast ratios
+
+## References
+
+- **Git-Spice CLI**: https://abhinav.github.io/git-spice/cli/reference/
+- **VSCode Extension API**: https://code.visualstudio.com/api
+- **Webview API**: https://code.visualstudio.com/api/extension-guides/webview
+- **VSCode Codicons**: https://microsoft.github.io/vscode-codicons/dist/codicon.html
