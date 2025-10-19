@@ -19,14 +19,15 @@
     "commands": [
       {
         "command": "git-spice.refreshBranches",
-        "title": "Refresh Git Spice Branches"
+        "title": "Refresh",
+        "icon": "$(refresh)"
       }
     ],
     "views": {
       "scm": [
         {
           "id": "gitSpice.branches",
-          "name": "Git Spice Branches",
+          "name": "Git Spice",
           "type": "webview"
         }
       ]

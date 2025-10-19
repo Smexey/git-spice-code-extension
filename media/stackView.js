@@ -56,8 +56,11 @@
     const header = document.createElement('div');
     header.className = 'branch-header';
 
-    if (branch.commits && branch.commits.length > 0) {
-      const toggle = document.createElement('i');
+    const hasCommits = branch.commits && branch.commits.length > 0;
+    let toggle;
+
+    if (hasCommits) {
+      toggle = document.createElement('i');
       toggle.className = 'branch-toggle codicon codicon-chevron-right';
       toggle.role = 'button';
       toggle.tabIndex = 0;
@@ -66,11 +69,6 @@
         card.classList.add('expanded');
         toggle.classList.add('expanded');
       }
-      toggle.addEventListener('click', (event) => {
-        event.stopPropagation();
-        card.classList.toggle('expanded');
-        toggle.classList.toggle('expanded');
-      });
       header.appendChild(toggle);
     } else {
       const spacer = document.createElement('span');
@@ -86,7 +84,10 @@
     const tags = document.createElement('div');
     tags.className = 'branch-tags';
     if (branch.current) {
-      tags.appendChild(createTag('→', 'primary'));
+      const currentIcon = document.createElement('i');
+      currentIcon.className = 'codicon codicon-arrow-right current-branch-icon';
+      currentIcon.title = 'Current branch';
+      tags.appendChild(currentIcon);
     }
     if (branch.restack) {
       tags.appendChild(createTag('Restack', 'warning'));
@@ -107,6 +108,21 @@
       tags.appendChild(button);
     }
     header.appendChild(tags);
+
+    // Make the entire header clickable for expansion (except for other clickable elements)
+    if (hasCommits) {
+      header.style.cursor = 'pointer';
+      header.addEventListener('click', (event) => {
+        // Don't expand if clicking on the PR link or other interactive elements
+        if (event.target.closest('.branch-pr-link')) {
+          return;
+        }
+        card.classList.toggle('expanded');
+        if (toggle) {
+          toggle.classList.toggle('expanded');
+        }
+      });
+    }
 
     card.appendChild(header);
 
