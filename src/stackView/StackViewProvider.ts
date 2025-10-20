@@ -54,7 +54,6 @@ export class StackViewProvider implements vscode.WebviewViewProvider {
 					}
 					return;
 				case 'branchReorder':
-					console.log('🔄 Received branchReorder message:', message);
 					if (typeof message.oldIndex === 'number' && typeof message.newIndex === 'number' && typeof message.branchName === 'string') {
 						void this.handleBranchReorder(message.oldIndex, message.newIndex, message.branchName);
 					}
@@ -117,16 +116,25 @@ export class StackViewProvider implements vscode.WebviewViewProvider {
 		);
 	}
 
+	/**
+	 * Handles a branch reorder operation from the webview.
+	 * Sets the pending reorder state and updates the UI to show confirm/cancel buttons.
+	 * 
+	 * @param oldIndex - The original position of the branch (from SortableJS)
+	 * @param newIndex - The new position of the branch (from SortableJS)
+	 * @param branchName - The name of the branch that was moved
+	 */
 	private async handleBranchReorder(oldIndex: number, newIndex: number, branchName: string): Promise<void> {
-		console.log('🔄 handleBranchReorder called:', { oldIndex, newIndex, branchName });
-
-		// Set pending reorder state
 		this.pendingReorder = { branchName, oldIndex, newIndex };
-		console.log('🔄 Set pendingReorder:', this.pendingReorder);
 		this.pushState();
-		console.log('🔄 Pushed state with pendingReorder');
 	}
 
+	/**
+	 * Handles confirmation of a branch reorder operation.
+	 * Executes the git-spice restack command and refreshes the view.
+	 * 
+	 * @param branchName - The name of the branch to restack
+	 */
 	private async handleConfirmReorder(branchName: string): Promise<void> {
 		if (!this.pendingReorder || this.pendingReorder.branchName !== branchName) {
 			return;
@@ -146,8 +154,6 @@ export class StackViewProvider implements vscode.WebviewViewProvider {
 			title: `Restacking branch: ${branchName}`,
 			cancellable: false,
 		}, async (progress) => {
-			console.log('Executing branch restack for:', branchName);
-
 			// Execute branch restack
 			const result = await execBranchRestack(this.workspaceFolder!, branchName);
 
@@ -162,6 +168,12 @@ export class StackViewProvider implements vscode.WebviewViewProvider {
 		});
 	}
 
+	/**
+	 * Handles cancellation of a branch reorder operation.
+	 * Clears the pending state and refreshes the view to restore the original order.
+	 * 
+	 * @param branchName - The name of the branch that was being reordered
+	 */
 	private async handleCancelReorder(branchName: string): Promise<void> {
 		if (!this.pendingReorder || this.pendingReorder.branchName !== branchName) {
 			return;

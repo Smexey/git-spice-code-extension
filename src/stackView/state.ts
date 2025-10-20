@@ -100,51 +100,42 @@ function orderStack(branches: BranchRecord[], branchMap: Map<string, BranchRecor
 	return ordered;
 }
 
+/**
+ * Applies a pending reorder operation to the branches array.
+ * This temporarily reorders branches to reflect the visual drag-and-drop
+ * before the user confirms or cancels the operation.
+ * 
+ * @param branches - The current ordered branches array
+ * @param pendingReorder - The reorder operation details from SortableJS
+ * @returns A new array with the branch moved to its new position
+ */
 function applyPendingReorder(
 	branches: BranchRecord[], 
 	pendingReorder: { branchName: string; oldIndex: number; newIndex: number }
 ): BranchRecord[] {
-	console.log('🔄 applyPendingReorder called:', {
-		branchName: pendingReorder.branchName,
-		oldIndex: pendingReorder.oldIndex,
-		newIndex: pendingReorder.newIndex,
-		branchesLength: branches.length
-	});
-	
-	// Create a copy of the branches array
 	const reordered = [...branches];
 	
 	// Find the branch that was moved
 	const branchIndex = reordered.findIndex(branch => branch.name === pendingReorder.branchName);
 	
 	if (branchIndex === -1) {
-		// Branch not found, return original order
-		console.log('🔄 Branch not found, returning original order');
-		return branches;
+		return branches; // Branch not found, return original order
 	}
 	
 	// Remove the branch from its current position
 	const [movedBranch] = reordered.splice(branchIndex, 1);
 	
 	// Convert SortableJS index to array index
-	// SortableJS indices are 0-based and refer to the DOM order
-	// Since the webview displays branches in reverse order, we need to convert
+	// SortableJS indices are 0-based and refer to the DOM order (top to bottom)
+	// Since the webview displays branches in reverse order (bottom to top),
+	// we need to convert the visual position to the array position
 	const actualNewIndex = reordered.length - pendingReorder.newIndex;
 	
-	// Clamp the index to valid range
+	// Ensure the index is within valid bounds
 	const clampedIndex = Math.max(0, Math.min(actualNewIndex, reordered.length));
 	
-	console.log('🔄 Index conversion:', {
-		sortableNewIndex: pendingReorder.newIndex,
-		actualNewIndex,
-		clampedIndex,
-		reorderedLength: reordered.length
-	});
-	
-	// Insert it at the new position
+	// Insert the branch at its new position
 	reordered.splice(clampedIndex, 0, movedBranch);
-	
-	console.log('🔄 Final reordered array:', reordered.map(b => b.name));
 	
 	return reordered;
 }

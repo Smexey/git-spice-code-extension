@@ -89,14 +89,12 @@ class StackView {
 
 	private updateState(newState: DisplayState): void {
 		const oldState = this.currentState;
-		console.log('🔄 updateState called with:', newState);
 		
 		// Avoid no-op updates: shallow compare serialized JSON (cheap for small states)
 		try {
 			const oldJson = JSON.stringify(oldState);
 			const newJson = JSON.stringify(newState);
 			if (oldJson === newJson) {
-				console.log('🔄 No changes detected, skipping update');
 				return; // no visible changes, skip update
 			}
 		} catch (e) {
@@ -113,7 +111,6 @@ class StackView {
 		this.updateBranches(oldState?.branches ?? [], newState.branches);
 		
 		// Handle pending reorder state
-		console.log('🔄 Calling updatePendingReorder with:', newState.pendingReorder);
 		this.updatePendingReorder(newState.pendingReorder);
 		
 		// Initialize SortableJS after branches are rendered
@@ -281,25 +278,26 @@ class StackView {
 		});
 	}
 
+	/**
+	 * Updates the UI to show or hide confirm/cancel buttons for pending reorder operations.
+	 * When a branch is dragged and dropped, this method creates buttons that allow the user
+	 * to confirm the reorder (execute restack) or cancel it (revert to original position).
+	 * 
+	 * @param pendingReorder - The pending reorder operation details, or undefined to clear buttons
+	 */
 	private updatePendingReorder(pendingReorder?: { branchName: string; oldIndex: number; newIndex: number }): void {
-		console.log('🔄 updatePendingReorder called with:', pendingReorder);
-		
 		// Remove existing confirm/cancel buttons
 		const existingButtons = this.stackList.querySelectorAll('.reorder-buttons');
-		console.log('🔄 Removing existing buttons:', existingButtons.length);
 		existingButtons.forEach(button => button.remove());
 
 		if (!pendingReorder) {
-			console.log('🔄 No pending reorder, returning');
 			return;
 		}
 
 		// Find the branch element that was moved
 		const branchElement = this.stackList.querySelector(`[data-branch="${pendingReorder.branchName}"]`);
-		console.log('🔄 Looking for branch element:', pendingReorder.branchName, 'found:', branchElement);
 		
 		if (!branchElement) {
-			console.error('🔄 Branch element not found!');
 			return;
 		}
 
@@ -312,7 +310,6 @@ class StackView {
 		confirmButton.className = 'reorder-confirm';
 		confirmButton.textContent = '✓ Confirm';
 		confirmButton.addEventListener('click', () => {
-			console.log('🔄 Confirm button clicked for:', pendingReorder.branchName);
 			this.vscode.postMessage({ type: 'confirmReorder', branchName: pendingReorder.branchName });
 		});
 
@@ -321,7 +318,6 @@ class StackView {
 		cancelButton.className = 'reorder-cancel';
 		cancelButton.textContent = '✗ Cancel';
 		cancelButton.addEventListener('click', () => {
-			console.log('🔄 Cancel button clicked for:', pendingReorder.branchName);
 			this.vscode.postMessage({ type: 'cancelReorder', branchName: pendingReorder.branchName });
 		});
 
@@ -329,9 +325,7 @@ class StackView {
 		buttonsContainer.appendChild(cancelButton);
 
 		// Insert buttons after the moved branch
-		console.log('🔄 Inserting buttons after branch element');
 		branchElement.parentNode?.insertBefore(buttonsContainer, branchElement.nextSibling);
-		console.log('🔄 Buttons inserted successfully');
 	}
 
 	private renderBranch(branch: BranchViewModel): HTMLElement {
@@ -693,23 +687,10 @@ class StackView {
 			chosenClass: 'sortable-chosen',
 			dragClass: 'sortable-drag',
 			onEnd: (evt) => {
-				console.log('🔄 SortableJS onEnd event:', {
-					oldIndex: evt.oldIndex,
-					newIndex: evt.newIndex,
-					item: evt.item,
-					itemDataset: (evt.item as HTMLElement).dataset
-				});
-
 				if (evt.oldIndex !== undefined && evt.newIndex !== undefined && evt.oldIndex !== evt.newIndex) {
 					const branchName = (evt.item as HTMLElement).dataset.branch;
-					console.log('🔄 Branch name from dataset:', branchName);
 					
 					if (branchName) {
-						console.log('🔄 Sending branchReorder message:', {
-							oldIndex: evt.oldIndex,
-							newIndex: evt.newIndex,
-							branch: branchName
-						});
 						
 						this.vscode.postMessage({
 							type: 'branchReorder',
