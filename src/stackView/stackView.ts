@@ -300,7 +300,6 @@ class StackView {
 			card.appendChild(commitsContainer);
 		}
 
-		this.enableDrag(card);
 		return card;
 	}
 
@@ -605,33 +604,29 @@ class StackView {
 		return span;
 	}
 
-	private enableDrag(card: HTMLElement): void {
-		// SortableJS will handle all drag functionality
-		// No need for custom event listeners
-	}
-
 	private initializeSortable(): void {
-		// Initialize SortableJS on the stack list
 		new Sortable(this.stackList, {
 			animation: 150,
 			ghostClass: 'sortable-ghost',
 			chosenClass: 'sortable-chosen',
 			dragClass: 'sortable-drag',
-			onEnd: (evt: { oldIndex?: number; newIndex?: number; item: HTMLElement }) => {
-				console.log('🔄 SortableJS onEnd:', {
-					oldIndex: evt.oldIndex,
-					newIndex: evt.newIndex,
-					item: evt.item.dataset.branch
-				});
-				
-				// Send the reorder event to the extension
-				if (evt.oldIndex !== undefined && evt.newIndex !== undefined && evt.oldIndex !== evt.newIndex && evt.item.dataset.branch) {
-					this.vscode.postMessage({
-						type: 'branchReorder',
-						oldIndex: evt.oldIndex,
-						newIndex: evt.newIndex,
-						branchName: evt.item.dataset.branch
-					});
+			onEnd: (evt) => {
+				if (evt.oldIndex !== undefined && evt.newIndex !== undefined && evt.oldIndex !== evt.newIndex) {
+					const branchName = (evt.item as HTMLElement).dataset.branch;
+					if (branchName) {
+						console.log('🔄 SortableJS reorder:', {
+							oldIndex: evt.oldIndex,
+							newIndex: evt.newIndex,
+							branch: branchName
+						});
+						
+						this.vscode.postMessage({
+							type: 'branchReorder',
+							oldIndex: evt.oldIndex,
+							newIndex: evt.newIndex,
+							branchName: branchName
+						});
+					}
 				}
 			}
 		});
