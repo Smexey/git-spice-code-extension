@@ -10,7 +10,9 @@ export function activate(context: vscode.ExtensionContext): void {
 
 	context.subscriptions.push(
 		provider,
-		vscode.window.registerWebviewViewProvider('gitSpice.branches', provider),
+		vscode.window.registerWebviewViewProvider('gitSpice.branches', provider, {
+			webviewOptions: { retainContextWhenHidden: true }
+		}),
 		vscode.commands.registerCommand('git-spice.refreshBranches', () => provider.refresh()),
 		vscode.workspace.onDidChangeWorkspaceFolders(() => {
 			provider.setWorkspaceFolder(vscode.workspace.workspaceFolders?.[0]);
