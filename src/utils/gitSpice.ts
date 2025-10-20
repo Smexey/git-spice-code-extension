@@ -11,6 +11,7 @@ const execFileAsync = promisify(execFile);
 
 export type BranchLoadResult = { value: GitSpiceBranch[] } | { error: string };
 export type StackEditResult = { value: void } | { error: string };
+export type BranchCommandResult = { value: void } | { error: string };
 
 export async function execGitSpice(folder: vscode.WorkspaceFolder): Promise<BranchLoadResult> {
 	try {
@@ -201,5 +202,153 @@ try {
 				console.error(`Failed to delete editor script: ${cleanupError}`);
 			}
 		}
+	}
+}
+
+/**
+ * Executes git-spice branch commands - each command implemented individually
+ */
+
+export async function execBranchUntrack(folder: vscode.WorkspaceFolder, branchName: string): Promise<BranchCommandResult> {
+	try {
+		const { stdout, stderr } = await execFileAsync('gs', ['branch', 'untrack', branchName], {
+			cwd: folder.uri.fsPath,
+			timeout: 30000,
+		});
+
+		if (stderr && stderr.trim()) {
+			return { error: `git-spice error: ${stderr.trim()}` };
+		}
+
+		return { value: undefined };
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		return { error: `Failed to execute gs branch untrack: ${message}` };
+	}
+}
+
+export async function execBranchCheckout(folder: vscode.WorkspaceFolder, branchName: string): Promise<BranchCommandResult> {
+	try {
+		const { stdout, stderr } = await execFileAsync('gs', ['branch', 'checkout', branchName], {
+			cwd: folder.uri.fsPath,
+			timeout: 30000,
+		});
+
+		if (stderr && stderr.trim()) {
+			return { error: `git-spice error: ${stderr.trim()}` };
+		}
+
+		return { value: undefined };
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		return { error: `Failed to execute gs branch checkout: ${message}` };
+	}
+}
+
+export async function execBranchFold(folder: vscode.WorkspaceFolder, branchName: string): Promise<BranchCommandResult> {
+	try {
+		const { stdout, stderr } = await execFileAsync('gs', ['branch', 'fold', '--branch', branchName], {
+			cwd: folder.uri.fsPath,
+			timeout: 30000,
+		});
+
+		if (stderr && stderr.trim()) {
+			return { error: `git-spice error: ${stderr.trim()}` };
+		}
+
+		return { value: undefined };
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		return { error: `Failed to execute gs branch fold: ${message}` };
+	}
+}
+
+export async function execBranchSquash(folder: vscode.WorkspaceFolder, branchName: string): Promise<BranchCommandResult> {
+	try {
+		const { stdout, stderr } = await execFileAsync('gs', ['branch', 'squash', branchName], {
+			cwd: folder.uri.fsPath,
+			timeout: 30000,
+		});
+
+		if (stderr && stderr.trim()) {
+			return { error: `git-spice error: ${stderr.trim()}` };
+		}
+
+		return { value: undefined };
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		return { error: `Failed to execute gs branch squash: ${message}` };
+	}
+}
+
+export async function execBranchEdit(folder: vscode.WorkspaceFolder, branchName: string): Promise<BranchCommandResult> {
+	try {
+		const { stdout, stderr } = await execFileAsync('gs', ['branch', 'edit'], {
+			cwd: folder.uri.fsPath,
+			timeout: 30000,
+		});
+
+		if (stderr && stderr.trim()) {
+			return { error: `git-spice error: ${stderr.trim()}` };
+		}
+
+		return { value: undefined };
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		return { error: `Failed to execute gs branch edit: ${message}` };
+	}
+}
+
+export async function execBranchRename(folder: vscode.WorkspaceFolder, branchName: string, newName: string): Promise<BranchCommandResult> {
+	try {
+		const { stdout, stderr } = await execFileAsync('gs', ['branch', 'rename', branchName, newName], {
+			cwd: folder.uri.fsPath,
+			timeout: 30000,
+		});
+
+		if (stderr && stderr.trim()) {
+			return { error: `git-spice error: ${stderr.trim()}` };
+		}
+
+		return { value: undefined };
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		return { error: `Failed to execute gs branch rename: ${message}` };
+	}
+}
+
+export async function execBranchRestack(folder: vscode.WorkspaceFolder, branchName: string): Promise<BranchCommandResult> {
+	try {
+		const { stdout, stderr } = await execFileAsync('gs', ['branch', 'restack', branchName], {
+			cwd: folder.uri.fsPath,
+			timeout: 30000,
+		});
+
+		if (stderr && stderr.trim()) {
+			return { error: `git-spice error: ${stderr.trim()}` };
+		}
+
+		return { value: undefined };
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		return { error: `Failed to execute gs branch restack: ${message}` };
+	}
+}
+
+export async function execBranchSubmit(folder: vscode.WorkspaceFolder, branchName: string): Promise<BranchCommandResult> {
+	try {
+		const { stdout, stderr } = await execFileAsync('gs', ['branch', 'submit', '--branch', branchName], {
+			cwd: folder.uri.fsPath,
+			timeout: 30000,
+		});
+
+		if (stderr && stderr.trim()) {
+			return { error: `git-spice error: ${stderr.trim()}` };
+		}
+
+		return { value: undefined };
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		return { error: `Failed to execute gs branch submit: ${message}` };
 	}
 }

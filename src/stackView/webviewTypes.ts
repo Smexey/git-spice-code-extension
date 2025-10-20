@@ -9,7 +9,16 @@ export type WebviewMessage =
 	| { type: 'branchDrop'; source: string; target: string }
 	| { type: 'branchReorder'; oldIndex: number; newIndex: number; branchName: string }
 	| { type: 'confirmReorder'; branchName: string }
-	| { type: 'cancelReorder'; branchName: string };
+	| { type: 'cancelReorder'; branchName: string }
+	| { type: 'branchUntrack'; branchName: string }
+	| { type: 'branchCheckout'; branchName: string }
+	| { type: 'branchFold'; branchName: string }
+	| { type: 'branchSquash'; branchName: string }
+	| { type: 'branchEdit'; branchName: string }
+	| { type: 'branchRenamePrompt'; branchName: string }
+	| { type: 'branchRename'; branchName: string; newName: string }
+	| { type: 'branchRestack'; branchName: string }
+	| { type: 'branchSubmit'; branchName: string };
 
 // Messages from extension to webview
 export type ExtensionMessage =

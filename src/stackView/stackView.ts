@@ -61,6 +61,8 @@ class StackView {
 	private readonly emptyEl: HTMLElement;
 	private currentState: DisplayState | null = null;
 	private sortableInstance: Sortable | null = null;
+	private contextMenu: HTMLElement | null = null;
+	private currentContextBranch: string | null = null;
 
 	private static readonly COMMIT_CHUNK = 10;
 	private static readonly ANIMATION_DURATION = 200;
@@ -72,6 +74,7 @@ class StackView {
 		this.emptyEl = document.getElementById('empty')!;
 
 		this.setupEventListeners();
+		this.createContextMenu();
 		this.vscode.postMessage({ type: 'ready' });
 	}
 
@@ -84,6 +87,139 @@ class StackView {
 			if (message.type === 'state') {
 				this.updateState(message.payload);
 			}
+		});
+
+		// Hide context menu when clicking elsewhere
+		document.addEventListener('click', () => {
+			this.hideContextMenu();
+		});
+
+		// Prevent context menu from closing when clicking inside it
+		document.addEventListener('click', (event) => {
+			if (this.contextMenu && this.contextMenu.contains(event.target as Node)) {
+				event.stopPropagation();
+			}
+		});
+	}
+
+	private createContextMenu(): void {
+		this.contextMenu = document.createElement('div');
+		this.contextMenu.className = 'context-menu';
+		this.contextMenu.style.display = 'none';
+		document.body.appendChild(this.contextMenu);
+
+		// Create menu items with codicon icons
+		const menuItems = [
+			{ label: 'Untrack', action: 'branchUntrack', icon: 'codicon-eye-closed' },
+			{ label: 'Checkout', action: 'branchCheckout', icon: 'codicon-git-branch' },
+			{ label: 'Fold', action: 'branchFold', icon: 'codicon-fold' },
+			{ label: 'Squash', action: 'branchSquash', icon: 'codicon-compress' },
+			{ label: 'Edit', action: 'branchEdit', icon: 'codicon-edit', requiresCurrent: true },
+			{ label: 'Rename', action: 'branchRename', icon: 'codicon-tag', requiresPrompt: true },
+			{ label: 'Restack', action: 'branchRestack', icon: 'codicon-refresh', requiresRestack: true },
+			{ label: 'Submit', action: 'branchSubmit', icon: 'codicon-send' },
+		];
+
+		menuItems.forEach(item => {
+			const menuItem = document.createElement('div');
+			menuItem.className = 'context-menu-item';
+			menuItem.dataset.action = item.action;
+			menuItem.innerHTML = `
+				<i class="codicon ${item.icon}"></i>
+				<span>${item.label}</span>
+			`;
+			menuItem.addEventListener('click', () => {
+				if (item.requiresPrompt) {
+					this.handlePromptAction(item.action);
+				} else {
+					this.executeBranchAction(item.action);
+				}
+				this.hideContextMenu();
+			});
+			this.contextMenu!.appendChild(menuItem);
+		});
+	}
+
+	private showContextMenu(event: MouseEvent, branchName: string): void {
+		if (!this.contextMenu) return;
+
+		event.preventDefault();
+		event.stopPropagation();
+
+		this.currentContextBranch = branchName;
+		
+		// Update menu items based on current branch
+		this.updateContextMenuItems(branchName);
+		
+		// Position the context menu
+		this.contextMenu.style.left = `${event.clientX}px`;
+		this.contextMenu.style.top = `${event.clientY}px`;
+		this.contextMenu.style.display = 'block';
+	}
+
+	private updateContextMenuItems(branchName: string): void {
+		if (!this.contextMenu) return;
+
+		const menuItems = this.contextMenu.querySelectorAll('.context-menu-item');
+		menuItems.forEach((item) => {
+			const menuItem = item as HTMLElement;
+			const action = menuItem.dataset.action;
+			
+			// Disable edit for non-current branches
+			if (action === 'branchEdit') {
+				const isCurrent = this.currentState?.branches.find(b => b.name === branchName)?.current;
+				if (!isCurrent) {
+					menuItem.classList.add('disabled');
+					menuItem.style.opacity = '0.5';
+					menuItem.style.pointerEvents = 'none';
+				} else {
+					menuItem.classList.remove('disabled');
+					menuItem.style.opacity = '1';
+					menuItem.style.pointerEvents = 'auto';
+				}
+			}
+
+			// Disable restack for branches that don't need restacking
+			if (action === 'branchRestack') {
+				const needsRestack = this.currentState?.branches.find(b => b.name === branchName)?.restack;
+				if (!needsRestack) {
+					menuItem.classList.add('disabled');
+					menuItem.style.opacity = '0.5';
+					menuItem.style.pointerEvents = 'none';
+				} else {
+					menuItem.classList.remove('disabled');
+					menuItem.style.opacity = '1';
+					menuItem.style.pointerEvents = 'auto';
+				}
+			}
+		});
+	}
+
+	private handlePromptAction(action: string): void {
+		if (!this.currentContextBranch) return;
+
+		if (action === 'branchRename') {
+			// Send message to extension to show VSCode input box
+			this.vscode.postMessage({
+				type: 'branchRenamePrompt',
+				branchName: this.currentContextBranch
+			});
+		}
+	}
+
+	private hideContextMenu(): void {
+		if (this.contextMenu) {
+			this.contextMenu.style.display = 'none';
+			this.currentContextBranch = null;
+		}
+	}
+
+	private executeBranchAction(action: string): void {
+		if (!this.currentContextBranch) return;
+
+		this.vscode.postMessage({
+			type: action as any,
+			branchName: this.currentContextBranch
 		});
 	}
 
@@ -378,6 +514,11 @@ class StackView {
 			card.classList.add('needs-restack');
 		}
 		card.draggable = true;
+
+		// Add right-click context menu
+		card.addEventListener('contextmenu', (event: MouseEvent) => {
+			this.showContextMenu(event, branch.name);
+		});
 
 		// Store branch data for diffing
 		(card as any)._branchData = {

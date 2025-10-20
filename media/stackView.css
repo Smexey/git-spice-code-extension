@@ -406,3 +406,80 @@ button {
 .reorder-cancel:hover {
   background: var(--vscode-list-hoverBackground);
 }
+
+/* Context Menu Styles */
+.context-menu {
+  position: fixed;
+  background: var(--vscode-menu-background);
+  border: 1px solid var(--vscode-menu-border);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  padding: 0.25rem 0;
+  min-width: 160px;
+  z-index: 1000;
+  font-size: 0.8rem;
+  color: var(--vscode-menu-foreground);
+  animation: context-menu-enter 0.15s ease-out;
+}
+
+@keyframes context-menu-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.context-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.6rem;
+  cursor: pointer;
+  transition: background-color 0.1s ease;
+  border: none;
+  background: transparent;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+
+.context-menu-item:hover {
+  background: var(--vscode-menu-selectionBackground);
+  color: var(--vscode-menu-selectionForeground);
+}
+
+.context-menu-item:focus {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+
+.context-menu-item .codicon {
+  font-size: 0.9rem;
+  width: 1rem;
+  text-align: center;
+  color: var(--vscode-icon-foreground);
+}
+
+.context-menu-item:hover .codicon {
+  color: var(--vscode-menu-selectionForeground);
+}
+
+.context-menu-item span {
+  flex: 1;
+  font-weight: 500;
+}
+
+.context-menu-item.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+  cursor: not-allowed;
+}
+
+.context-menu-item.disabled .codicon {
+  opacity: 0.5;
+}

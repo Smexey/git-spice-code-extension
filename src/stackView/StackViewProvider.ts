@@ -3,7 +3,18 @@ import * as vscode from 'vscode';
 import { buildDisplayState } from './state';
 import type { BranchRecord, DisplayState } from './types';
 import type { WebviewMessage } from './webviewTypes';
-import { execGitSpice, execStackEdit } from '../utils/gitSpice';
+import { 
+	execGitSpice, 
+	execStackEdit,
+	execBranchUntrack,
+	execBranchCheckout,
+	execBranchFold,
+	execBranchSquash,
+	execBranchEdit,
+	execBranchRename,
+	execBranchRestack,
+	execBranchSubmit
+} from '../utils/gitSpice';
 import { readMediaFile, readDistFile } from '../utils/readFileSync';
 
 export class StackViewProvider implements vscode.WebviewViewProvider {
@@ -66,6 +77,51 @@ export class StackViewProvider implements vscode.WebviewViewProvider {
 				case 'cancelReorder':
 					if (typeof message.branchName === 'string') {
 						void this.handleCancelReorder(message.branchName);
+					}
+					return;
+				case 'branchUntrack':
+					if (typeof message.branchName === 'string') {
+						void this.handleBranchCommandInternal('untrack', message.branchName, execBranchUntrack);
+					}
+					return;
+				case 'branchCheckout':
+					if (typeof message.branchName === 'string') {
+						void this.handleBranchCommandInternal('checkout', message.branchName, execBranchCheckout);
+					}
+					return;
+				case 'branchFold':
+					if (typeof message.branchName === 'string') {
+						void this.handleBranchCommandInternal('fold', message.branchName, execBranchFold);
+					}
+					return;
+				case 'branchSquash':
+					if (typeof message.branchName === 'string') {
+						void this.handleBranchCommandInternal('squash', message.branchName, execBranchSquash);
+					}
+					return;
+				case 'branchEdit':
+					if (typeof message.branchName === 'string') {
+						void this.handleBranchCommandInternal('edit', message.branchName, execBranchEdit);
+					}
+					return;
+				case 'branchRenamePrompt':
+					if (typeof message.branchName === 'string') {
+						void this.handleBranchRenamePrompt(message.branchName);
+					}
+					return;
+				case 'branchRename':
+					if (typeof message.branchName === 'string' && typeof message.newName === 'string') {
+						void this.handleBranchRename(message.branchName, message.newName);
+					}
+					return;
+				case 'branchRestack':
+					if (typeof message.branchName === 'string') {
+						void this.handleBranchCommandInternal('restack', message.branchName, execBranchRestack);
+					}
+					return;
+				case 'branchSubmit':
+					if (typeof message.branchName === 'string') {
+						void this.handleBranchCommandInternal('submit', message.branchName, execBranchSubmit);
 					}
 					return;
 				default:
@@ -274,6 +330,180 @@ export class StackViewProvider implements vscode.WebviewViewProvider {
 		// Clear pending reorder state and refresh to restore original order
 		this.pendingReorder = null;
 		await this.refresh();
+	}
+
+	/**
+	 * Generic handler for branch commands from the context menu
+	 */
+	/**
+	 * Public method to handle branch commands from VSCode commands
+	 */
+	public async handleBranchCommand(commandName: string, branchName: string): Promise<void> {
+		// Map command names to their exec functions
+		const commandMap: Record<string, (folder: vscode.WorkspaceFolder, branchName: string) => Promise<any>> = {
+			untrack: execBranchUntrack,
+			checkout: execBranchCheckout,
+			fold: execBranchFold,
+			squash: execBranchSquash,
+			edit: execBranchEdit,
+			restack: execBranchRestack,
+			submit: execBranchSubmit,
+		};
+
+		const execFunction = commandMap[commandName];
+		if (!execFunction) {
+			console.error(`❌ Unknown command: ${commandName}`);
+			void vscode.window.showErrorMessage(`Unknown command: ${commandName}`);
+			return;
+		}
+
+		await this.handleBranchCommandInternal(commandName, branchName, execFunction);
+	}
+
+	/**
+	 * Internal method to handle branch commands with exec function
+	 */
+	private async handleBranchCommandInternal(
+		commandName: string,
+		branchName: string,
+		execFunction: (folder: vscode.WorkspaceFolder, branchName: string) => Promise<{ value: void } | { error: string }>
+	): Promise<void> {
+		// Validate input
+		if (typeof branchName !== 'string' || branchName.trim() === '') {
+			console.error(`❌ Invalid branch name provided to handleBranchCommand (${commandName}):`, branchName);
+			void vscode.window.showErrorMessage(`Invalid branch name provided for ${commandName}.`);
+			return;
+		}
+
+		// Validate workspace folder
+		if (!this.workspaceFolder) {
+			console.error(`❌ No workspace folder available for branch ${commandName}`);
+			void vscode.window.showErrorMessage('No workspace folder available.');
+			return;
+		}
+
+		console.log(`🔄 Executing branch ${commandName} for:`, branchName);
+
+		// Show progress notification
+		await vscode.window.withProgress({
+			location: vscode.ProgressLocation.Notification,
+			title: `${commandName.charAt(0).toUpperCase() + commandName.slice(1)}ing branch: ${branchName}`,
+			cancellable: false,
+		}, async (progress) => {
+			try {
+				// Execute the branch command
+				const result = await execFunction(this.workspaceFolder!, branchName);
+
+				if ('error' in result) {
+					console.error(`🔄 Branch ${commandName} failed:`, result.error);
+					void vscode.window.showErrorMessage(`Failed to ${commandName} branch: ${result.error}`);
+				} else {
+					console.log(`🔄 Branch ${commandName} successful`);
+					void vscode.window.showInformationMessage(`Branch ${branchName} ${commandName}ed successfully.`);
+				}
+
+				// Always refresh state to reflect current git-spice state
+				await this.refresh();
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				console.error(`🔄 Unexpected error during branch ${commandName}:`, message);
+				void vscode.window.showErrorMessage(`Unexpected error during branch ${commandName}: ${message}`);
+			}
+		});
+	}
+
+	/**
+	 * Public method to handle branch rename prompt from VSCode commands
+	 */
+	public async handleBranchRenamePrompt(branchName: string): Promise<void> {
+		// Validate input
+		if (typeof branchName !== 'string' || branchName.trim() === '') {
+			console.error('❌ Invalid branch name provided to handleBranchRenamePrompt:', branchName);
+			return;
+		}
+
+		try {
+			const newName = await vscode.window.showInputBox({
+				prompt: `Enter new name for branch '${branchName}':`,
+				value: branchName,
+				validateInput: (input) => {
+					if (!input || !input.trim()) {
+						return 'Branch name cannot be empty.';
+					}
+					if (input.trim() === branchName) {
+						return 'New name must be different from current name.';
+					}
+					return null;
+				}
+			});
+
+			if (newName && newName.trim() && newName !== branchName) {
+				// Send the rename command with the new name back to webview
+				this.view.webview.postMessage({
+					type: 'branchRename',
+					branchName: branchName,
+					newName: newName.trim()
+				});
+			}
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			console.error('❌ Error showing rename prompt:', message);
+			void vscode.window.showErrorMessage(`Error showing rename prompt: ${message}`);
+		}
+	}
+
+	/**
+	 * Handles branch rename command with new name parameter
+	 */
+	private async handleBranchRename(branchName: string, newName: string): Promise<void> {
+		// Validate input
+		if (typeof branchName !== 'string' || branchName.trim() === '') {
+			console.error('❌ Invalid branch name provided to handleBranchRename:', branchName);
+			void vscode.window.showErrorMessage('Invalid branch name provided for rename.');
+			return;
+		}
+
+		if (typeof newName !== 'string' || newName.trim() === '') {
+			console.error('❌ Invalid new name provided to handleBranchRename:', newName);
+			void vscode.window.showErrorMessage('Invalid new name provided for rename.');
+			return;
+		}
+
+		// Validate workspace folder
+		if (!this.workspaceFolder) {
+			console.error('❌ No workspace folder available for branch rename');
+			void vscode.window.showErrorMessage('No workspace folder available.');
+			return;
+		}
+
+		console.log('🔄 Executing branch rename for:', branchName, 'to:', newName);
+
+		// Show progress notification
+		await vscode.window.withProgress({
+			location: vscode.ProgressLocation.Notification,
+			title: `Renaming branch: ${branchName} → ${newName}`,
+			cancellable: false,
+		}, async (progress) => {
+			try {
+				// Execute the branch rename command
+				const result = await execBranchRename(this.workspaceFolder!, branchName, newName);
+
+				if ('error' in result) {
+					console.error('🔄 Branch rename failed:', result.error);
+					void vscode.window.showErrorMessage(`Failed to rename branch: ${result.error}`);
+				} else {
+					console.log('🔄 Branch rename successful');
+					void vscode.window.showInformationMessage(`Branch renamed from ${branchName} to ${newName} successfully.`);
+				}
+
+				// Always refresh state to reflect current git-spice state
+				await this.refresh();
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				console.error('🔄 Unexpected error during branch rename:', message);
+				void vscode.window.showErrorMessage(`Unexpected error during branch rename: ${message}`);
+			}
+		});
 	}
 
 	private setupFileWatcher(): void {
