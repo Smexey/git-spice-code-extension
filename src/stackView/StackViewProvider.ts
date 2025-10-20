@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 import { buildDisplayState } from './state';
 import type { BranchRecord, DisplayState } from './types';
 import type { WebviewMessage } from './webviewTypes';
-import { execGitSpice, execStackEdit, execBranchRestack } from '../utils/gitSpice';
+import { execGitSpice, execStackEdit } from '../utils/gitSpice';
 import { readMediaFile, readDistFile } from '../utils/readFileSync';
 
 export class StackViewProvider implements vscode.WebviewViewProvider {
@@ -119,66 +119,158 @@ export class StackViewProvider implements vscode.WebviewViewProvider {
 	/**
 	 * Handles a branch reorder operation from the webview.
 	 * Sets the pending reorder state and updates the UI to show confirm/cancel buttons.
-	 * 
+	 *
 	 * @param oldIndex - The original position of the branch (from SortableJS)
 	 * @param newIndex - The new position of the branch (from SortableJS)
 	 * @param branchName - The name of the branch that was moved
 	 */
 	private async handleBranchReorder(oldIndex: number, newIndex: number, branchName: string): Promise<void> {
+		// Validate input parameters
+		if (typeof oldIndex !== 'number' || typeof newIndex !== 'number') {
+			console.error('❌ Invalid reorder indices:', { oldIndex, newIndex });
+			return;
+		}
+
+		if (typeof branchName !== 'string' || branchName.trim() === '') {
+			console.error('❌ Invalid branch name:', branchName);
+			return;
+		}
+
+		if (oldIndex < 0 || newIndex < 0) {
+			console.error('❌ Negative reorder indices:', { oldIndex, newIndex });
+			return;
+		}
+
+		// Check if this is actually a reorder (not just a drop in the same position)
+		if (oldIndex === newIndex) {
+			console.log('🔄 Branch dropped in same position, ignoring:', branchName);
+			return;
+		}
+
+		console.log('🔄 Setting pending reorder:', { branchName, oldIndex, newIndex });
+		
+		// Set pending reorder state
 		this.pendingReorder = { branchName, oldIndex, newIndex };
 		this.pushState();
 	}
 
 	/**
 	 * Handles confirmation of a branch reorder operation.
-	 * Executes the git-spice restack command and refreshes the view.
-	 * 
-	 * @param branchName - The name of the branch to restack
+	 * Executes the git-spice stack edit command and refreshes the view.
+	 *
+	 * @param branchName - The name of the branch to reorder
 	 */
 	private async handleConfirmReorder(branchName: string): Promise<void> {
-		if (!this.pendingReorder || this.pendingReorder.branchName !== branchName) {
+		// Validate input
+		if (typeof branchName !== 'string' || branchName.trim() === '') {
+			console.error('❌ Invalid branch name provided to handleConfirmReorder:', branchName);
+			void vscode.window.showErrorMessage('Invalid branch name provided.');
 			return;
 		}
 
-		const { oldIndex, newIndex } = this.pendingReorder;
-		this.pendingReorder = null;
+		// Validate pending reorder state
+		if (!this.pendingReorder) {
+			console.warn('⚠️ No pending reorder found when confirming reorder for:', branchName);
+			void vscode.window.showWarningMessage('No pending reorder operation found.');
+			return;
+		}
 
+		if (this.pendingReorder.branchName !== branchName) {
+			console.error('❌ Branch name mismatch in pending reorder. Expected:', branchName, 'but found:', this.pendingReorder.branchName);
+			void vscode.window.showErrorMessage('Branch name mismatch in pending reorder operation.');
+			return;
+		}
+
+		// Validate workspace folder
 		if (!this.workspaceFolder) {
+			console.error('❌ No workspace folder available for branch reorder');
 			void vscode.window.showErrorMessage('No workspace folder available.');
 			return;
 		}
 
+		const { oldIndex, newIndex } = this.pendingReorder;
+		
+		// Validate reorder indices
+		if (typeof oldIndex !== 'number' || typeof newIndex !== 'number') {
+			console.error('❌ Invalid reorder indices:', { oldIndex, newIndex });
+			void vscode.window.showErrorMessage('Invalid reorder indices.');
+			return;
+		}
+
+		if (oldIndex < 0 || newIndex < 0) {
+			console.error('❌ Negative reorder indices:', { oldIndex, newIndex });
+			void vscode.window.showErrorMessage('Invalid reorder indices: indices must be non-negative.');
+			return;
+		}
+
+		// Clear pending state before operation to prevent double-execution
+		this.pendingReorder = null;
+
+		console.log('🔄 Executing branch reorder for:', branchName);
+		console.log('🔄 Reorder details:', { oldIndex, newIndex, branchName });
+
 		// Show progress notification
 		await vscode.window.withProgress({
 			location: vscode.ProgressLocation.Notification,
-			title: `Restacking branch: ${branchName}`,
+			title: `Reordering branch: ${branchName}`,
 			cancellable: false,
 		}, async (progress) => {
-			// Execute branch restack
-			const result = await execBranchRestack(this.workspaceFolder!, branchName);
+			try {
+				// Execute branch reorder using gs stack edit
+				const result = await execStackEdit(this.workspaceFolder!, { oldIndex, newIndex, branchName });
 
-			if ('error' in result) {
-				void vscode.window.showErrorMessage(`Failed to restack branch: ${result.error}`);
-			} else {
-				void vscode.window.showInformationMessage(`Branch ${branchName} restacked successfully.`);
+				if ('error' in result) {
+					console.error('🔄 Branch reorder failed:', result.error);
+					void vscode.window.showErrorMessage(`Failed to reorder branch: ${result.error}`);
+					
+					// Restore pending state on failure so user can retry
+					this.pendingReorder = { branchName, oldIndex, newIndex };
+					this.pushState();
+				} else {
+					console.log('🔄 Branch reorder successful');
+					void vscode.window.showInformationMessage(`Branch ${branchName} reordered successfully.`);
+				}
+
+				// Always refresh state to reflect current git-spice state
+				await this.refresh();
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				console.error('🔄 Unexpected error during branch reorder:', message);
+				void vscode.window.showErrorMessage(`Unexpected error during branch reorder: ${message}`);
+				
+				// Restore pending state on unexpected error
+				this.pendingReorder = { branchName, oldIndex, newIndex };
+				this.pushState();
 			}
-
-			// Refresh state to reflect the new order
-			await this.refresh();
 		});
 	}
 
 	/**
 	 * Handles cancellation of a branch reorder operation.
 	 * Clears the pending state and refreshes the view to restore the original order.
-	 * 
+	 *
 	 * @param branchName - The name of the branch that was being reordered
 	 */
 	private async handleCancelReorder(branchName: string): Promise<void> {
-		if (!this.pendingReorder || this.pendingReorder.branchName !== branchName) {
+		// Validate input
+		if (typeof branchName !== 'string' || branchName.trim() === '') {
+			console.error('❌ Invalid branch name provided to handleCancelReorder:', branchName);
 			return;
 		}
 
+		// Validate pending reorder state
+		if (!this.pendingReorder) {
+			console.warn('⚠️ No pending reorder found when canceling reorder for:', branchName);
+			return;
+		}
+
+		if (this.pendingReorder.branchName !== branchName) {
+			console.error('❌ Branch name mismatch in pending reorder. Expected:', branchName, 'but found:', this.pendingReorder.branchName);
+			return;
+		}
+
+		console.log('🔄 Canceling reorder for:', branchName);
+		
 		// Clear pending reorder state and refresh to restore original order
 		this.pendingReorder = null;
 		await this.refresh();

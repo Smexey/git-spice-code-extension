@@ -281,25 +281,60 @@ class StackView {
 	/**
 	 * Updates the UI to show or hide confirm/cancel buttons for pending reorder operations.
 	 * When a branch is dragged and dropped, this method creates buttons that allow the user
-	 * to confirm the reorder (execute restack) or cancel it (revert to original position).
+	 * to confirm the reorder (execute stack edit) or cancel it (revert to original position).
 	 * 
 	 * @param pendingReorder - The pending reorder operation details, or undefined to clear buttons
 	 */
 	private updatePendingReorder(pendingReorder?: { branchName: string; oldIndex: number; newIndex: number }): void {
+		// Validate stackList element exists
+		if (!this.stackList) {
+			console.error('❌ StackList element not found');
+			return;
+		}
+
 		// Remove existing confirm/cancel buttons
 		const existingButtons = this.stackList.querySelectorAll('.reorder-buttons');
-		existingButtons.forEach(button => button.remove());
+		existingButtons.forEach(button => {
+			if (button && button.parentNode) {
+				button.remove();
+			}
+		});
 
 		if (!pendingReorder) {
 			return;
 		}
 
-		// Find the branch element that was moved
-		const branchElement = this.stackList.querySelector(`[data-branch="${pendingReorder.branchName}"]`);
-		
-		if (!branchElement) {
+		// Validate pendingReorder object structure
+		if (typeof pendingReorder.branchName !== 'string' || pendingReorder.branchName.trim() === '') {
+			console.error('❌ Invalid branch name in pendingReorder:', pendingReorder.branchName);
 			return;
 		}
+
+		if (typeof pendingReorder.oldIndex !== 'number' || typeof pendingReorder.newIndex !== 'number') {
+			console.error('❌ Invalid indices in pendingReorder:', { oldIndex: pendingReorder.oldIndex, newIndex: pendingReorder.newIndex });
+			return;
+		}
+
+		if (pendingReorder.oldIndex < 0 || pendingReorder.newIndex < 0) {
+			console.error('❌ Negative indices in pendingReorder:', { oldIndex: pendingReorder.oldIndex, newIndex: pendingReorder.newIndex });
+			return;
+		}
+
+		// Find the branch element that was moved
+		const branchElement = this.stackList.querySelector(`[data-branch="${pendingReorder.branchName}"]`) as HTMLElement;
+		
+		if (!branchElement) {
+			console.error('❌ Branch element not found for:', pendingReorder.branchName);
+			return;
+		}
+
+		// Validate branch element has a parent
+		if (!branchElement.parentNode) {
+			console.error('❌ Branch element has no parent node');
+			return;
+		}
+
+		console.log('🔄 Creating reorder buttons for branch:', pendingReorder.branchName);
 
 		// Create confirm/cancel buttons
 		const buttonsContainer = document.createElement('div');
@@ -310,6 +345,7 @@ class StackView {
 		confirmButton.className = 'reorder-confirm';
 		confirmButton.textContent = '✓ Confirm';
 		confirmButton.addEventListener('click', () => {
+			console.log('🔄 Confirm button clicked for:', pendingReorder.branchName);
 			this.vscode.postMessage({ type: 'confirmReorder', branchName: pendingReorder.branchName });
 		});
 
@@ -318,6 +354,7 @@ class StackView {
 		cancelButton.className = 'reorder-cancel';
 		cancelButton.textContent = '✗ Cancel';
 		cancelButton.addEventListener('click', () => {
+			console.log('🔄 Cancel button clicked for:', pendingReorder.branchName);
 			this.vscode.postMessage({ type: 'cancelReorder', branchName: pendingReorder.branchName });
 		});
 
@@ -325,7 +362,7 @@ class StackView {
 		buttonsContainer.appendChild(cancelButton);
 
 		// Insert buttons after the moved branch
-		branchElement.parentNode?.insertBefore(buttonsContainer, branchElement.nextSibling);
+		branchElement.parentNode.insertBefore(buttonsContainer, branchElement.nextSibling);
 	}
 
 	private renderBranch(branch: BranchViewModel): HTMLElement {
@@ -669,41 +706,82 @@ class StackView {
 		return span;
 	}
 
+	/**
+	 * Initializes SortableJS for drag-and-drop functionality on the branch list.
+	 * Destroys any existing instance before creating a new one.
+	 */
 	private initializeSortable(): void {
+		// Validate stackList element exists
+		if (!this.stackList) {
+			console.error('❌ StackList element not found for SortableJS initialization');
+			return;
+		}
+
 		// Destroy existing instance if it exists
 		if (this.sortableInstance) {
-			this.sortableInstance.destroy();
+			try {
+				this.sortableInstance.destroy();
+			} catch (error) {
+				console.warn('⚠️ Error destroying existing SortableJS instance:', error);
+			}
 			this.sortableInstance = null;
 		}
 
 		// Only initialize if we have branches
 		if (this.stackList.children.length === 0) {
+			console.log('🔄 No branches to make sortable, skipping SortableJS initialization');
 			return;
 		}
 
-		this.sortableInstance = new Sortable(this.stackList, {
-			animation: 150,
-			ghostClass: 'sortable-ghost',
-			chosenClass: 'sortable-chosen',
-			dragClass: 'sortable-drag',
-			onEnd: (evt) => {
-				if (evt.oldIndex !== undefined && evt.newIndex !== undefined && evt.oldIndex !== evt.newIndex) {
-					const branchName = (evt.item as HTMLElement).dataset.branch;
-					
-					if (branchName) {
-						
-						this.vscode.postMessage({
-							type: 'branchReorder',
-							oldIndex: evt.oldIndex,
-							newIndex: evt.newIndex,
-							branchName: branchName
-						});
-					} else {
-						console.error('🔄 No branch name found in dataset!');
+		try {
+			this.sortableInstance = new Sortable(this.stackList, {
+				animation: 150,
+				ghostClass: 'sortable-ghost',
+				chosenClass: 'sortable-chosen',
+				dragClass: 'sortable-drag',
+				onEnd: (evt) => {
+					// Validate event structure
+					if (!evt || typeof evt.oldIndex !== 'number' || typeof evt.newIndex !== 'number') {
+						console.error('❌ Invalid SortableJS event structure:', evt);
+						return;
 					}
+
+					// Check if this is actually a reorder (not just a drop in the same position)
+					if (evt.oldIndex === evt.newIndex) {
+						console.log('🔄 Branch dropped in same position, ignoring');
+						return;
+					}
+
+					// Validate indices are non-negative
+					if (evt.oldIndex < 0 || evt.newIndex < 0) {
+						console.error('❌ Negative SortableJS indices:', { oldIndex: evt.oldIndex, newIndex: evt.newIndex });
+						return;
+					}
+
+					// Get branch name from dataset
+					const branchName = (evt.item as HTMLElement)?.dataset?.branch;
+					
+					if (!branchName || typeof branchName !== 'string' || branchName.trim() === '') {
+						console.error('❌ No valid branch name found in dataset for item:', evt.item);
+						return;
+					}
+
+					console.log('🔄 SortableJS reorder detected:', { branchName, oldIndex: evt.oldIndex, newIndex: evt.newIndex });
+					
+					this.vscode.postMessage({
+						type: 'branchReorder',
+						oldIndex: evt.oldIndex,
+						newIndex: evt.newIndex,
+						branchName: branchName
+					});
 				}
-			}
-		});
+			});
+
+			console.log('🔄 SortableJS initialized successfully');
+		} catch (error) {
+			console.error('❌ Failed to initialize SortableJS:', error);
+			this.sortableInstance = null;
+		}
 	}
 }
 
