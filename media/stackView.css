@@ -446,6 +446,8 @@ button {
   text-align: left;
   font: inherit;
   color: inherit;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .context-menu-item:hover {

@@ -113,11 +113,11 @@ class StackView {
 			{ label: 'Untrack', action: 'branchUntrack', icon: 'codicon-eye-closed' },
 			{ label: 'Checkout', action: 'branchCheckout', icon: 'codicon-git-branch' },
 			{ label: 'Fold', action: 'branchFold', icon: 'codicon-fold' },
-			{ label: 'Squash', action: 'branchSquash', icon: 'codicon-compress' },
+			{ label: 'Squash', action: 'branchSquash', icon: 'codicon-fold-down' },
 			{ label: 'Edit', action: 'branchEdit', icon: 'codicon-edit', requiresCurrent: true },
 			{ label: 'Rename', action: 'branchRename', icon: 'codicon-tag', requiresPrompt: true },
 			{ label: 'Restack', action: 'branchRestack', icon: 'codicon-refresh', requiresRestack: true },
-			{ label: 'Submit', action: 'branchSubmit', icon: 'codicon-send' },
+			{ label: 'Submit', action: 'branchSubmit', icon: 'codicon-git-pull-request' },
 		];
 
 		menuItems.forEach(item => {
@@ -160,6 +160,7 @@ class StackView {
 	private updateContextMenuItems(branchName: string): void {
 		if (!this.contextMenu) return;
 
+		const branch = this.currentState?.branches.find(b => b.name === branchName);
 		const menuItems = this.contextMenu.querySelectorAll('.context-menu-item');
 		menuItems.forEach((item) => {
 			const menuItem = item as HTMLElement;
@@ -167,7 +168,7 @@ class StackView {
 			
 			// Disable edit for non-current branches
 			if (action === 'branchEdit') {
-				const isCurrent = this.currentState?.branches.find(b => b.name === branchName)?.current;
+				const isCurrent = branch?.current;
 				if (!isCurrent) {
 					menuItem.classList.add('disabled');
 					menuItem.style.opacity = '0.5';
@@ -181,7 +182,7 @@ class StackView {
 
 			// Disable restack for branches that don't need restacking
 			if (action === 'branchRestack') {
-				const needsRestack = this.currentState?.branches.find(b => b.name === branchName)?.restack;
+				const needsRestack = branch?.restack;
 				if (!needsRestack) {
 					menuItem.classList.add('disabled');
 					menuItem.style.opacity = '0.5';
@@ -190,6 +191,17 @@ class StackView {
 					menuItem.classList.remove('disabled');
 					menuItem.style.opacity = '1';
 					menuItem.style.pointerEvents = 'auto';
+				}
+			}
+
+			// Update submit icon and label based on PR existence
+			if (action === 'branchSubmit') {
+				const icon = menuItem.querySelector('.codicon');
+				const label = menuItem.querySelector('span');
+				if (icon && label) {
+					const hasPR = Boolean(branch?.change);
+					icon.className = hasPR ? 'codicon codicon-cloud-upload' : 'codicon codicon-git-pull-request';
+					label.textContent = hasPR ? 'Submit' : 'Submit (create PR)';
 				}
 			}
 		});
