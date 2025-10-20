@@ -34,11 +34,50 @@ button {
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
+  position: relative;
 }
 
 .stack-item {
   border: none;
   background: transparent;
+  animation: item-enter 0.2s ease-out;
+  position: relative;
+  transition: transform 0.25s ease-out;
+}
+
+@keyframes item-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.stack-item.item-enter {
+  opacity: 0;
+  transform: translateY(-8px);
+}
+
+.stack-item.item-exit {
+  animation: item-exit 0.2s ease-out forwards;
+}
+
+@keyframes item-exit {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+    max-height: 500px;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-8px);
+    max-height: 0;
+    margin: 0;
+    padding: 0;
+  }
 }
 
 .branch-card {
@@ -50,7 +89,7 @@ button {
   flex-direction: column;
   gap: 0.2rem;
   cursor: grab;
-  transition: border-color 0.12s ease;
+  transition: border-color 0.25s ease, box-shadow 0.25s ease;
 }
 
 .branch-card .branch-commits {
@@ -77,6 +116,30 @@ button {
 .branch-card.is-current {
   border-color: var(--vscode-foreground);
   box-shadow: 0 0 0 1px var(--vscode-foreground);
+}
+
+.branch-card.item-updated,
+.commit-item.item-updated,
+.current-branch-icon.item-updated,
+.tag.item-updated,
+.branch-pr-link.item-updated,
+.branch-meta span.item-updated {
+  animation: element-flash 0.3s ease-out;
+}
+
+@keyframes element-flash {
+  0% {
+    background-color: transparent;
+    box-shadow: none;
+  }
+  50% {
+    background-color: var(--vscode-list-hoverBackground);
+    box-shadow: 0 0 0 1px var(--vscode-focusBorder);
+  }
+  100% {
+    background-color: transparent;
+    box-shadow: none;
+  }
 }
 
 .branch-card.needs-restack {
@@ -205,6 +268,30 @@ button {
   height: 1rem;
 }
 
+.commit-wrapper {
+  animation: item-enter 0.2s ease-out;
+}
+
+.commit-wrapper.item-enter {
+  opacity: 0;
+  transform: translateX(-8px);
+}
+
+.commit-wrapper.item-exit {
+  animation: commit-exit 0.2s ease-out forwards;
+}
+
+@keyframes commit-exit {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+}
+
 .commit-item {
   font-size: 0.7rem;
   display: flex;
@@ -216,6 +303,7 @@ button {
   text-align: left;
   padding: 0.15rem 0;
   cursor: pointer;
+  width: 100%;
 }
 
 .commit-item:hover {
@@ -227,9 +315,17 @@ button {
   word-break: break-word;
 }
 
+.commit-subject.item-updated {
+  animation: element-flash 0.3s ease-out;
+}
+
 .commit-sha {
   font-family: var(--vscode-editor-font-family, monospace);
   opacity: 0.8;
+}
+
+.commit-sha.item-updated {
+  animation: element-flash 0.3s ease-out;
 }
 
 .branch-more {

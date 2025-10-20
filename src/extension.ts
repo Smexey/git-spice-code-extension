@@ -4,11 +4,12 @@ import * as vscode from 'vscode';
 
 import { StackViewProvider } from './stackView/StackViewProvider';
 
-export async function activate(context: vscode.ExtensionContext): Promise<void> {
+export function activate(context: vscode.ExtensionContext): void {
 	const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
 	const provider = new StackViewProvider(workspaceFolder, context.extensionUri);
 
 	context.subscriptions.push(
+		provider,
 		vscode.window.registerWebviewViewProvider('gitSpice.branches', provider),
 		vscode.commands.registerCommand('git-spice.refreshBranches', () => provider.refresh()),
 		vscode.workspace.onDidChangeWorkspaceFolders(() => {
@@ -16,8 +17,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 			void provider.refresh();
 		}),
 	);
-
-	await provider.refresh();
 }
 
 export function deactivate(): void {

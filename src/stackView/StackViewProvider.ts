@@ -9,8 +9,11 @@ export class StackViewProvider implements vscode.WebviewViewProvider {
 	private view: vscode.WebviewView | undefined;
 	private branches: BranchRecord[] = [];
 	private lastError: string | undefined;
+	private fileWatcher: vscode.FileSystemWatcher | undefined;
 
-	constructor(private workspaceFolder: vscode.WorkspaceFolder | undefined, private readonly extensionUri: vscode.Uri) {}
+	constructor(private workspaceFolder: vscode.WorkspaceFolder | undefined, private readonly extensionUri: vscode.Uri) {
+		this.setupFileWatcher();
+	}
 
 	async resolveWebviewView(webviewView: vscode.WebviewView): Promise<void> {
 		this.view = webviewView;
@@ -52,10 +55,16 @@ export class StackViewProvider implements vscode.WebviewViewProvider {
 					return;
 			}
 		});
+
+		// Load initial state if we haven't already
+		if (this.branches.length === 0 && !this.lastError) {
+			await this.refresh();
+		}
 	}
 
 	setWorkspaceFolder(folder: vscode.WorkspaceFolder | undefined): void {
 		this.workspaceFolder = folder;
+		this.setupFileWatcher();
 	}
 
 	async refresh(): Promise<void> {
@@ -85,6 +94,36 @@ export class StackViewProvider implements vscode.WebviewViewProvider {
 
 		const state = buildDisplayState(this.branches, this.lastError);
 		void this.view.webview.postMessage({ type: 'state', payload: state });
+	}
+
+	private setupFileWatcher(): void {
+		// Dispose existing watcher if any
+		this.fileWatcher?.dispose();
+		this.fileWatcher = undefined;
+
+		if (!this.workspaceFolder) {
+			return;
+		}
+
+		// Watch for git-spice metadata changes and Git HEAD changes
+		// git-spice stores its data in .git/refs/spice/data
+		// HEAD changes indicate branch switches
+		const gitDir = vscode.Uri.joinPath(this.workspaceFolder.uri, '.git');
+		const pattern = new vscode.RelativePattern(gitDir, '{refs/spice/data,HEAD,refs/heads/**}');
+
+		this.fileWatcher = vscode.workspace.createFileSystemWatcher(pattern);
+
+		const refreshHandler = () => {
+			void this.refresh();
+		};
+
+		this.fileWatcher.onDidChange(refreshHandler);
+		this.fileWatcher.onDidCreate(refreshHandler);
+		this.fileWatcher.onDidDelete(refreshHandler);
+	}
+
+	dispose(): void {
+		this.fileWatcher?.dispose();
 	}
 
 	private async renderHtml(webview: vscode.Webview): Promise<string> {
