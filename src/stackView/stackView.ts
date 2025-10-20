@@ -34,6 +34,7 @@
 
 import type { BranchViewModel, DisplayState } from './types';
 import type { WebviewMessage, ExtensionMessage } from './webviewTypes';
+import Sortable from 'sortablejs';
 
 interface BranchData {
 	current: boolean;
@@ -106,6 +107,9 @@ class StackView {
 
 		// Update branch list
 		this.updateBranches(oldState?.branches ?? [], newState.branches);
+		
+		// Initialize SortableJS after branches are rendered
+		this.initializeSortable();
 	}
 
 	/**
@@ -602,38 +606,34 @@ class StackView {
 	}
 
 	private enableDrag(card: HTMLElement): void {
-		card.addEventListener('dragstart', (event: DragEvent) => {
-			const branch = card.dataset.branch ?? '';
-			event.dataTransfer?.setData('text/plain', branch);
-			event.dataTransfer?.setDragImage(card, card.clientWidth / 2, card.clientHeight / 2);
-			card.classList.add('dragging');
-		});
-		
-		card.addEventListener('dragend', () => {
-			card.classList.remove('dragging');
-		});
-		
-		card.addEventListener('dragover', (event: DragEvent) => {
-			event.preventDefault();
-			card.classList.add('drag-over');
-			if (event.dataTransfer) {
-				event.dataTransfer.dropEffect = 'move';
+		// SortableJS will handle all drag functionality
+		// No need for custom event listeners
+	}
+
+	private initializeSortable(): void {
+		// Initialize SortableJS on the stack list
+		new Sortable(this.stackList, {
+			animation: 150,
+			ghostClass: 'sortable-ghost',
+			chosenClass: 'sortable-chosen',
+			dragClass: 'sortable-drag',
+			onEnd: (evt: { oldIndex?: number; newIndex?: number; item: HTMLElement }) => {
+				console.log('🔄 SortableJS onEnd:', {
+					oldIndex: evt.oldIndex,
+					newIndex: evt.newIndex,
+					item: evt.item.dataset.branch
+				});
+				
+				// Send the reorder event to the extension
+				if (evt.oldIndex !== undefined && evt.newIndex !== undefined && evt.oldIndex !== evt.newIndex && evt.item.dataset.branch) {
+					this.vscode.postMessage({
+						type: 'branchReorder',
+						oldIndex: evt.oldIndex,
+						newIndex: evt.newIndex,
+						branchName: evt.item.dataset.branch
+					});
+				}
 			}
-		});
-		
-		card.addEventListener('dragleave', () => {
-			card.classList.remove('drag-over');
-		});
-		
-		card.addEventListener('drop', (event: DragEvent) => {
-			event.preventDefault();
-			card.classList.remove('drag-over');
-			const source = event.dataTransfer?.getData('text/plain');
-			const target = card.dataset.branch;
-			if (!source || !target || source === target) {
-				return;
-			}
-			this.vscode.postMessage({ type: 'branchDrop', source, target });
 		});
 	}
 }

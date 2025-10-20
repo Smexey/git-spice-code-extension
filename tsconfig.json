@@ -9,6 +9,8 @@
 		"sourceMap": true,
 		"rootDir": "src",
 		"strict": true,   /* enable all strict type-checking options */
+		"esModuleInterop": true,
+		"allowSyntheticDefaultImports": true,
 		"types": [
 			"node",
 			"vscode",
