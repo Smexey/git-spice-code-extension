@@ -62,7 +62,7 @@ class StackView {
 
 	private static readonly COMMIT_CHUNK = 10;
 	private static readonly ANIMATION_DURATION = 200;
-	private static readonly FLASH_DURATION = 400;
+	private static readonly FLASH_DURATION = 300; // Back to normal duration
 
 	constructor() {
 		this.stackList = document.getElementById('stackList')!;
@@ -161,7 +161,7 @@ class StackView {
 					const child = existingElement.querySelector('[data-content]') as HTMLElement;
 					if (child && needsUpdate(child, item)) {
 						const newChild = render(item);
-						this.animateUpdate(newChild);
+						// Don't animate here - let the update function handle specific animations
 						child.replaceWith(newChild);
 					}
 				}
@@ -212,10 +212,16 @@ class StackView {
 	 * Animate element update (flash)
 	 */
 	private animateUpdate(element: HTMLElement): void {
-		element.classList.add('item-updated');
-		setTimeout(() => {
-			element.classList.remove('item-updated');
-		}, StackView.FLASH_DURATION);
+		// Prevent overlapping animations by removing existing animation class first
+		element.classList.remove('item-updated');
+		
+		// Use requestAnimationFrame to ensure the class removal takes effect
+		requestAnimationFrame(() => {
+			element.classList.add('item-updated');
+			setTimeout(() => {
+				element.classList.remove('item-updated');
+			}, StackView.FLASH_DURATION);
+		});
 	}
 
 	private updateBranches(oldBranches: BranchViewModel[], newBranches: BranchViewModel[]): void {
@@ -244,7 +250,9 @@ class StackView {
 		this.diffList(this.stackList, reversedOld, reversedNew, {
 			getKey: (branch) => branch.name,
 			render: (branch) => this.renderBranch(branch),
-			update: (card, branch) => this.updateBranch(card, branch),
+			update: (card, branch) => {
+				this.updateBranch(card, branch);
+			},
 			needsUpdate: (card, branch) => this.branchNeedsUpdate(card, branch),
 			itemSelector: '.stack-item',
 			itemClass: 'stack-item',
@@ -311,8 +319,8 @@ class StackView {
 
 		// Granular updates with targeted animations
 		if (oldData) {
-			// Flash current branch indicator if it changed
-			if (oldData.current !== Boolean(branch.current)) {
+			// Flash current branch indicator if it changed TO current (not FROM current)
+			if (!oldData.current && Boolean(branch.current)) {
 				const currentIcon = card.querySelector('.current-branch-icon');
 				if (currentIcon) {
 					this.animateUpdate(currentIcon as HTMLElement);
@@ -374,12 +382,7 @@ class StackView {
 		if (branch.commits && branch.commits.length > 0) {
 			const newCommitsContainer = this.renderCommitsContainer(branch, card);
 			if (existingCommits) {
-				const wasExpanded = card.classList.contains('expanded');
 				existingCommits.replaceWith(newCommitsContainer);
-				// Restore expanded state
-				if (wasExpanded) {
-					card.classList.add('expanded');
-				}
 			} else {
 				card.appendChild(newCommitsContainer);
 			}
