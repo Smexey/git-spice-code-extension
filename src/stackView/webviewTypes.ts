@@ -7,7 +7,9 @@ export type WebviewMessage =
 	| { type: 'openChange'; url: string }
 	| { type: 'openCommit'; sha: string }
 	| { type: 'branchDrop'; source: string; target: string }
-	| { type: 'branchReorder'; oldIndex: number; newIndex: number; branchName: string };
+	| { type: 'branchReorder'; oldIndex: number; newIndex: number; branchName: string }
+	| { type: 'confirmReorder'; branchName: string }
+	| { type: 'cancelReorder'; branchName: string };
 
 // Messages from extension to webview
 export type ExtensionMessage =

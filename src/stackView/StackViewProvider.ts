@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 import { buildDisplayState } from './state';
 import type { BranchRecord, DisplayState } from './types';
 import type { WebviewMessage } from './webviewTypes';
-import { execGitSpice, execStackEdit } from '../utils/gitSpice';
+import { execGitSpice, execStackEdit, execBranchRestack } from '../utils/gitSpice';
 import { readMediaFile, readDistFile } from '../utils/readFileSync';
 
 export class StackViewProvider implements vscode.WebviewViewProvider {
@@ -12,6 +12,7 @@ export class StackViewProvider implements vscode.WebviewViewProvider {
 	private lastError: string | undefined;
 	private fileWatcher: vscode.FileSystemWatcher | undefined;
 	private pendingState: DisplayState | null = null;
+	private pendingReorder: { branchName: string; oldIndex: number; newIndex: number } | null = null;
 
 	constructor(private workspaceFolder: vscode.WorkspaceFolder | undefined, private readonly extensionUri: vscode.Uri) {
 		// No initialization here - everything happens after resolveWebviewView
@@ -53,8 +54,19 @@ export class StackViewProvider implements vscode.WebviewViewProvider {
 					}
 					return;
 				case 'branchReorder':
+					console.log('🔄 Received branchReorder message:', message);
 					if (typeof message.oldIndex === 'number' && typeof message.newIndex === 'number' && typeof message.branchName === 'string') {
 						void this.handleBranchReorder(message.oldIndex, message.newIndex, message.branchName);
+					}
+					return;
+				case 'confirmReorder':
+					if (typeof message.branchName === 'string') {
+						void this.handleConfirmReorder(message.branchName);
+					}
+					return;
+				case 'cancelReorder':
+					if (typeof message.branchName === 'string') {
+						void this.handleCancelReorder(message.branchName);
 					}
 					return;
 				default:
@@ -94,7 +106,7 @@ export class StackViewProvider implements vscode.WebviewViewProvider {
 
 	private pushState(): void {
 		// No undefined check needed - only called when view exists
-		const state = buildDisplayState(this.branches, this.lastError);
+		const state = buildDisplayState(this.branches, this.lastError, this.pendingReorder || undefined);
 		void this.view.webview.postMessage({ type: 'state', payload: state });
 	}
 
@@ -106,7 +118,22 @@ export class StackViewProvider implements vscode.WebviewViewProvider {
 	}
 
 	private async handleBranchReorder(oldIndex: number, newIndex: number, branchName: string): Promise<void> {
-		console.log('Received branchReorder:', { oldIndex, newIndex, branchName });
+		console.log('🔄 handleBranchReorder called:', { oldIndex, newIndex, branchName });
+
+		// Set pending reorder state
+		this.pendingReorder = { branchName, oldIndex, newIndex };
+		console.log('🔄 Set pendingReorder:', this.pendingReorder);
+		this.pushState();
+		console.log('🔄 Pushed state with pendingReorder');
+	}
+
+	private async handleConfirmReorder(branchName: string): Promise<void> {
+		if (!this.pendingReorder || this.pendingReorder.branchName !== branchName) {
+			return;
+		}
+
+		const { oldIndex, newIndex } = this.pendingReorder;
+		this.pendingReorder = null;
 
 		if (!this.workspaceFolder) {
 			void vscode.window.showErrorMessage('No workspace folder available.');
@@ -116,30 +143,33 @@ export class StackViewProvider implements vscode.WebviewViewProvider {
 		// Show progress notification
 		await vscode.window.withProgress({
 			location: vscode.ProgressLocation.Notification,
-			title: `Reordering stack: moving ${branchName}`,
+			title: `Restacking branch: ${branchName}`,
 			cancellable: false,
 		}, async (progress) => {
-			// Get current branch order (maintain original order)
-			const currentBranches = this.branches.filter(b => b.name !== branchName);
+			console.log('Executing branch restack for:', branchName);
 
-			// Insert the moved branch at the new position
-			const branchNames = currentBranches.map(b => b.name);
-			branchNames.splice(newIndex, 0, branchName);
-
-			console.log('Executing stack edit with order:', branchNames);
-
-			// Execute stack edit
-			const result = await execStackEdit(this.workspaceFolder!, branchNames);
+			// Execute branch restack
+			const result = await execBranchRestack(this.workspaceFolder!, branchName);
 
 			if ('error' in result) {
-				void vscode.window.showErrorMessage(`Failed to reorder stack: ${result.error}`);
+				void vscode.window.showErrorMessage(`Failed to restack branch: ${result.error}`);
 			} else {
-				void vscode.window.showInformationMessage(`Stack reordered successfully.`);
+				void vscode.window.showInformationMessage(`Branch ${branchName} restacked successfully.`);
 			}
 
 			// Refresh state to reflect the new order
 			await this.refresh();
 		});
+	}
+
+	private async handleCancelReorder(branchName: string): Promise<void> {
+		if (!this.pendingReorder || this.pendingReorder.branchName !== branchName) {
+			return;
+		}
+
+		// Clear pending reorder state and refresh to restore original order
+		this.pendingReorder = null;
+		await this.refresh();
 	}
 
 	private setupFileWatcher(): void {

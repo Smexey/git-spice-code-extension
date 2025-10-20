@@ -1,6 +1,10 @@
 import type { BranchChangeViewModel, BranchRecord, BranchViewModel, DisplayState } from './types';
 
-export function buildDisplayState(branches: BranchRecord[], error?: string): DisplayState {
+export function buildDisplayState(
+	branches: BranchRecord[], 
+	error?: string, 
+	pendingReorder?: { branchName: string; oldIndex: number; newIndex: number }
+): DisplayState {
 	const branchMap = new Map(branches.map((branch) => [branch.name, branch]));
 	const current = branches.find((branch) => branch.current);
 	const stackBranches = current
@@ -9,11 +13,17 @@ export function buildDisplayState(branches: BranchRecord[], error?: string): Dis
 			.filter((branch): branch is BranchRecord => branch !== undefined)
 		: [];
 
-	const ordered = orderStack(stackBranches, branchMap);
+	let ordered = orderStack(stackBranches, branchMap);
+
+	// Apply pending reorder if it exists
+	if (pendingReorder) {
+		ordered = applyPendingReorder(ordered, pendingReorder);
+	}
 
 	return {
 		branches: ordered.map((branch) => createBranchViewModel(branch)),
 		error,
+		pendingReorder,
 	};
 }
 
@@ -88,6 +98,55 @@ function orderStack(branches: BranchRecord[], branchMap: Map<string, BranchRecor
 	}
 
 	return ordered;
+}
+
+function applyPendingReorder(
+	branches: BranchRecord[], 
+	pendingReorder: { branchName: string; oldIndex: number; newIndex: number }
+): BranchRecord[] {
+	console.log('🔄 applyPendingReorder called:', {
+		branchName: pendingReorder.branchName,
+		oldIndex: pendingReorder.oldIndex,
+		newIndex: pendingReorder.newIndex,
+		branchesLength: branches.length
+	});
+	
+	// Create a copy of the branches array
+	const reordered = [...branches];
+	
+	// Find the branch that was moved
+	const branchIndex = reordered.findIndex(branch => branch.name === pendingReorder.branchName);
+	
+	if (branchIndex === -1) {
+		// Branch not found, return original order
+		console.log('🔄 Branch not found, returning original order');
+		return branches;
+	}
+	
+	// Remove the branch from its current position
+	const [movedBranch] = reordered.splice(branchIndex, 1);
+	
+	// Convert SortableJS index to array index
+	// SortableJS indices are 0-based and refer to the DOM order
+	// Since the webview displays branches in reverse order, we need to convert
+	const actualNewIndex = reordered.length - pendingReorder.newIndex;
+	
+	// Clamp the index to valid range
+	const clampedIndex = Math.max(0, Math.min(actualNewIndex, reordered.length));
+	
+	console.log('🔄 Index conversion:', {
+		sortableNewIndex: pendingReorder.newIndex,
+		actualNewIndex,
+		clampedIndex,
+		reorderedLength: reordered.length
+	});
+	
+	// Insert it at the new position
+	reordered.splice(clampedIndex, 0, movedBranch);
+	
+	console.log('🔄 Final reordered array:', reordered.map(b => b.name));
+	
+	return reordered;
 }
 
 function createBranchViewModel(branch: BranchRecord): BranchViewModel {

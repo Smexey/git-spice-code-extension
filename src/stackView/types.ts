@@ -25,4 +25,9 @@ export type BranchViewModel = {
 export type DisplayState = {
 	branches: BranchViewModel[];
 	error?: string;
+	pendingReorder?: {
+		branchName: string;
+		oldIndex: number;
+		newIndex: number;
+	};
 };

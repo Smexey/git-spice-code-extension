@@ -11,6 +11,7 @@ const execFileAsync = promisify(execFile);
 
 export type BranchLoadResult = { value: GitSpiceBranch[] } | { error: string };
 export type StackEditResult = { value: void } | { error: string };
+export type BranchRestackResult = { value: void } | { error: string };
 
 export async function execGitSpice(folder: vscode.WorkspaceFolder): Promise<BranchLoadResult> {
 	try {
@@ -48,5 +49,21 @@ export async function execStackEdit(folder: vscode.WorkspaceFolder, branchNames:
 	} finally {
 		// Clean up the temporary file
 		await fs.promises.unlink(tempFilePath).catch(err => console.error(`Failed to delete temp file: ${err}`));
+	}
+}
+
+export async function execBranchRestack(folder: vscode.WorkspaceFolder, branchName: string): Promise<BranchRestackResult> {
+	try {
+		const { stdout, stderr } = await execFileAsync('gs', ['branch', 'restack'], {
+			cwd: folder.uri.fsPath,
+		});
+
+		if (stderr) {
+			return { error: stderr };
+		}
+		return { value: undefined };
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		return { error: `Failed to execute gs branch restack: ${message}` };
 	}
 }

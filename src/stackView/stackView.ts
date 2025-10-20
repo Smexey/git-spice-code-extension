@@ -60,6 +60,7 @@ class StackView {
 	private readonly errorEl: HTMLElement;
 	private readonly emptyEl: HTMLElement;
 	private currentState: DisplayState | null = null;
+	private sortableInstance: Sortable | null = null;
 
 	private static readonly COMMIT_CHUNK = 10;
 	private static readonly ANIMATION_DURATION = 200;
@@ -88,11 +89,14 @@ class StackView {
 
 	private updateState(newState: DisplayState): void {
 		const oldState = this.currentState;
+		console.log('🔄 updateState called with:', newState);
+		
 		// Avoid no-op updates: shallow compare serialized JSON (cheap for small states)
 		try {
 			const oldJson = JSON.stringify(oldState);
 			const newJson = JSON.stringify(newState);
 			if (oldJson === newJson) {
+				console.log('🔄 No changes detected, skipping update');
 				return; // no visible changes, skip update
 			}
 		} catch (e) {
@@ -107,6 +111,10 @@ class StackView {
 
 		// Update branch list
 		this.updateBranches(oldState?.branches ?? [], newState.branches);
+		
+		// Handle pending reorder state
+		console.log('🔄 Calling updatePendingReorder with:', newState.pendingReorder);
+		this.updatePendingReorder(newState.pendingReorder);
 		
 		// Initialize SortableJS after branches are rendered
 		this.initializeSortable();
@@ -167,6 +175,11 @@ class StackView {
 						const newChild = render(item);
 						// Don't animate here - let the update function handle specific animations
 						child.replaceWith(newChild);
+						
+						// Update the wrapper's dataset.branch if it changed
+						if (newChild.dataset.branch) {
+							existingElement.dataset.branch = newChild.dataset.branch;
+						}
 					}
 				}
 
@@ -184,6 +197,11 @@ class StackView {
 				
 				const child = render(item);
 				wrapper.appendChild(child);
+
+				// Copy the branch name to the wrapper for SortableJS
+				if (child.dataset.branch) {
+					wrapper.dataset.branch = child.dataset.branch;
+				}
 
 				const nextElement: ChildNode | null = previousElement ? previousElement.nextSibling : container.firstChild;
 				container.insertBefore(wrapper, nextElement);
@@ -261,6 +279,59 @@ class StackView {
 			itemSelector: '.stack-item',
 			itemClass: 'stack-item',
 		});
+	}
+
+	private updatePendingReorder(pendingReorder?: { branchName: string; oldIndex: number; newIndex: number }): void {
+		console.log('🔄 updatePendingReorder called with:', pendingReorder);
+		
+		// Remove existing confirm/cancel buttons
+		const existingButtons = this.stackList.querySelectorAll('.reorder-buttons');
+		console.log('🔄 Removing existing buttons:', existingButtons.length);
+		existingButtons.forEach(button => button.remove());
+
+		if (!pendingReorder) {
+			console.log('🔄 No pending reorder, returning');
+			return;
+		}
+
+		// Find the branch element that was moved
+		const branchElement = this.stackList.querySelector(`[data-branch="${pendingReorder.branchName}"]`);
+		console.log('🔄 Looking for branch element:', pendingReorder.branchName, 'found:', branchElement);
+		
+		if (!branchElement) {
+			console.error('🔄 Branch element not found!');
+			return;
+		}
+
+		// Create confirm/cancel buttons
+		const buttonsContainer = document.createElement('div');
+		buttonsContainer.className = 'reorder-buttons';
+
+		const confirmButton = document.createElement('button');
+		confirmButton.type = 'button';
+		confirmButton.className = 'reorder-confirm';
+		confirmButton.textContent = '✓ Confirm';
+		confirmButton.addEventListener('click', () => {
+			console.log('🔄 Confirm button clicked for:', pendingReorder.branchName);
+			this.vscode.postMessage({ type: 'confirmReorder', branchName: pendingReorder.branchName });
+		});
+
+		const cancelButton = document.createElement('button');
+		cancelButton.type = 'button';
+		cancelButton.className = 'reorder-cancel';
+		cancelButton.textContent = '✗ Cancel';
+		cancelButton.addEventListener('click', () => {
+			console.log('🔄 Cancel button clicked for:', pendingReorder.branchName);
+			this.vscode.postMessage({ type: 'cancelReorder', branchName: pendingReorder.branchName });
+		});
+
+		buttonsContainer.appendChild(confirmButton);
+		buttonsContainer.appendChild(cancelButton);
+
+		// Insert buttons after the moved branch
+		console.log('🔄 Inserting buttons after branch element');
+		branchElement.parentNode?.insertBefore(buttonsContainer, branchElement.nextSibling);
+		console.log('🔄 Buttons inserted successfully');
 	}
 
 	private renderBranch(branch: BranchViewModel): HTMLElement {
@@ -605,16 +676,36 @@ class StackView {
 	}
 
 	private initializeSortable(): void {
-		new Sortable(this.stackList, {
+		// Destroy existing instance if it exists
+		if (this.sortableInstance) {
+			this.sortableInstance.destroy();
+			this.sortableInstance = null;
+		}
+
+		// Only initialize if we have branches
+		if (this.stackList.children.length === 0) {
+			return;
+		}
+
+		this.sortableInstance = new Sortable(this.stackList, {
 			animation: 150,
 			ghostClass: 'sortable-ghost',
 			chosenClass: 'sortable-chosen',
 			dragClass: 'sortable-drag',
 			onEnd: (evt) => {
+				console.log('🔄 SortableJS onEnd event:', {
+					oldIndex: evt.oldIndex,
+					newIndex: evt.newIndex,
+					item: evt.item,
+					itemDataset: (evt.item as HTMLElement).dataset
+				});
+
 				if (evt.oldIndex !== undefined && evt.newIndex !== undefined && evt.oldIndex !== evt.newIndex) {
 					const branchName = (evt.item as HTMLElement).dataset.branch;
+					console.log('🔄 Branch name from dataset:', branchName);
+					
 					if (branchName) {
-						console.log('🔄 SortableJS reorder:', {
+						console.log('🔄 Sending branchReorder message:', {
 							oldIndex: evt.oldIndex,
 							newIndex: evt.newIndex,
 							branch: branchName
@@ -626,6 +717,8 @@ class StackView {
 							newIndex: evt.newIndex,
 							branchName: branchName
 						});
+					} else {
+						console.error('🔄 No branch name found in dataset!');
 					}
 				}
 			}
