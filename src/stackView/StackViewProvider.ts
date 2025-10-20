@@ -1,18 +1,20 @@
 import * as vscode from 'vscode';
 
 import { buildDisplayState } from './state';
-import type { BranchRecord } from './types';
+import type { BranchRecord, DisplayState } from './types';
+import type { WebviewMessage } from './webviewTypes';
 import { execGitSpice } from '../utils/gitSpice';
-import { readMediaFile } from '../utils/readFileSync';
+import { readMediaFile, readDistFile } from '../utils/readFileSync';
 
 export class StackViewProvider implements vscode.WebviewViewProvider {
-	private view: vscode.WebviewView | undefined;
+	private view!: vscode.WebviewView; // definite assignment assertion - set in resolveWebviewView
 	private branches: BranchRecord[] = [];
 	private lastError: string | undefined;
 	private fileWatcher: vscode.FileSystemWatcher | undefined;
+	private pendingState: DisplayState | null = null;
 
 	constructor(private workspaceFolder: vscode.WorkspaceFolder | undefined, private readonly extensionUri: vscode.Uri) {
-		this.setupFileWatcher();
+		// No initialization here - everything happens after resolveWebviewView
 	}
 
 	async resolveWebviewView(webviewView: vscode.WebviewView): Promise<void> {
@@ -21,12 +23,13 @@ export class StackViewProvider implements vscode.WebviewViewProvider {
 			enableScripts: true,
 			localResourceRoots: [
 				vscode.Uri.joinPath(this.extensionUri, 'media'),
+				vscode.Uri.joinPath(this.extensionUri, 'dist'),
 				vscode.Uri.joinPath(this.extensionUri, 'node_modules', '@vscode', 'codicons', 'dist'),
 			],
 		};
 		webviewView.webview.html = await this.renderHtml(webviewView.webview);
 
-		webviewView.webview.onDidReceiveMessage((message) => {
+		webviewView.webview.onDidReceiveMessage((message: WebviewMessage) => {
 			switch (message.type) {
 				case 'ready':
 					this.pushState();
@@ -46,9 +49,7 @@ export class StackViewProvider implements vscode.WebviewViewProvider {
 					return;
 				case 'branchDrop':
 					if (typeof message.source === 'string' && typeof message.target === 'string') {
-						void vscode.window.showInformationMessage(
-							`Drag-and-drop planned: move ${message.source} onto ${message.target}`,
-						);
+						void this.handleBranchDrop(message.source, message.target);
 					}
 					return;
 				default:
@@ -56,15 +57,14 @@ export class StackViewProvider implements vscode.WebviewViewProvider {
 			}
 		});
 
-		// Load initial state if we haven't already
-		if (this.branches.length === 0 && !this.lastError) {
-			await this.refresh();
-		}
+		this.setupFileWatcher();
+		void this.refresh();
 	}
 
 	setWorkspaceFolder(folder: vscode.WorkspaceFolder | undefined): void {
 		this.workspaceFolder = folder;
 		this.setupFileWatcher();
+		void this.refresh();
 	}
 
 	async refresh(): Promise<void> {
@@ -88,12 +88,16 @@ export class StackViewProvider implements vscode.WebviewViewProvider {
 	}
 
 	private pushState(): void {
-		if (!this.view) {
-			return;
-		}
-
+		// No undefined check needed - only called when view exists
 		const state = buildDisplayState(this.branches, this.lastError);
 		void this.view.webview.postMessage({ type: 'state', payload: state });
+	}
+
+	private async handleBranchDrop(source: string, target: string): Promise<void> {
+		// TODO: Implement branch drop functionality
+		await vscode.window.showInformationMessage(
+			`Drag-and-drop planned: move ${source} onto ${target}`,
+		);
 	}
 
 	private setupFileWatcher(): void {
@@ -101,7 +105,7 @@ export class StackViewProvider implements vscode.WebviewViewProvider {
 		this.fileWatcher?.dispose();
 		this.fileWatcher = undefined;
 
-		if (!this.workspaceFolder) {
+		if (!this.workspaceFolder || !this.view) {
 			return;
 		}
 
@@ -137,6 +141,7 @@ export class StackViewProvider implements vscode.WebviewViewProvider {
 		].join('; ');
 
 		const mediaUri = (name: string) => webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'media', name)).toString();
+		const distUri = (name: string) => webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'dist', name)).toString();
 		const codiconStyleUri = webview.asWebviewUri(
 			vscode.Uri.joinPath(this.extensionUri, 'node_modules', '@vscode', 'codicons', 'dist', 'codicon.css')
 		).toString();
@@ -146,7 +151,7 @@ export class StackViewProvider implements vscode.WebviewViewProvider {
 			.replace('{{csp}}', csp)
 			.replace('{{codiconStyleUri}}', codiconStyleUri)
 			.replace('{{styleUri}}', mediaUri('stackView.css'))
-			.replace('{{scriptUri}}', mediaUri('stackView.js'))
+			.replace('{{scriptUri}}', distUri('stackView.js'))
 			.replace('{{nonce}}', nonce);
 	}
 }

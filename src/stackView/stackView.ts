@@ -1,0 +1,641 @@
+/**
+ * Git-Spice Stack View
+ * 
+ * Architecture:
+ * 
+ * 1. STATE MANAGEMENT
+ *    - Single source of truth: currentState
+ *    - Immutable updates trigger diffing and rendering
+ *    - State includes: error, branches (with commits, changes, etc.)
+ * 
+ * 2. DIFFING ABSTRACTION
+ *    - Generic diffList() function handles list animations
+ *    - Works at any level: branches, commits, tags, etc.
+ *    - Three operations: add (animate in), remove (animate out), update (flash)
+ *    - Keyed reconciliation prevents unnecessary re-renders
+ * 
+ * 3. RENDERING PIPELINE
+ *    - updateState() → updateBranches() → diffList()
+ *    - Each branch tracks its own data for change detection
+ *    - Commits can be expanded/animated independently
+ *    - All animations are CSS-based for performance
+ * 
+ * 4. ANIMATION SYSTEM
+ *    - animateIn(): Entrance animation (fade + slide)
+ *    - animateOut(): Exit animation (fade + slide + collapse)
+ *    - animateUpdate(): Flash animation to highlight changes
+ *    - All durations are constants for easy tweaking
+ * 
+ * 5. EXTENSIBILITY
+ *    - Add new animatable elements by wrapping in diffList()
+ *    - New animations: add CSS classes and update constants
+ *    - New state fields: extend updateState() and render functions
+ */
+
+import type { BranchViewModel, DisplayState } from './types';
+import type { WebviewMessage, ExtensionMessage } from './webviewTypes';
+
+interface BranchData {
+	current: boolean;
+	restack: boolean;
+	commitsCount: number;
+	hasChange: boolean;
+	changeId?: string;
+	changeStatus?: string;
+}
+
+interface DiffListConfig<T> {
+	getKey: (item: T) => string;
+	render: (item: T) => HTMLElement;
+	update?: (element: HTMLElement, item: T) => void;
+	needsUpdate?: (element: HTMLElement, item: T) => boolean;
+	itemSelector: string;
+	itemClass: string;
+}
+
+class StackView {
+	private readonly vscode = acquireVsCodeApi();
+	private readonly stackList: HTMLElement;
+	private readonly errorEl: HTMLElement;
+	private readonly emptyEl: HTMLElement;
+	private currentState: DisplayState | null = null;
+
+	private static readonly COMMIT_CHUNK = 10;
+	private static readonly ANIMATION_DURATION = 200;
+	private static readonly FLASH_DURATION = 400;
+
+	constructor() {
+		this.stackList = document.getElementById('stackList')!;
+		this.errorEl = document.getElementById('error')!;
+		this.emptyEl = document.getElementById('empty')!;
+
+		this.setupEventListeners();
+		this.vscode.postMessage({ type: 'ready' });
+	}
+
+	private setupEventListeners(): void {
+		window.addEventListener('message', (event: MessageEvent) => {
+			const message = event.data as ExtensionMessage;
+			if (!message) {
+				return;
+			}
+			if (message.type === 'state') {
+				this.updateState(message.payload);
+			}
+		});
+	}
+
+	private updateState(newState: DisplayState): void {
+		const oldState = this.currentState;
+		// Avoid no-op updates: shallow compare serialized JSON (cheap for small states)
+		try {
+			const oldJson = JSON.stringify(oldState);
+			const newJson = JSON.stringify(newState);
+			if (oldJson === newJson) {
+				return; // no visible changes, skip update
+			}
+		} catch (e) {
+			// fallback to updating if serialization fails
+		}
+
+		this.currentState = newState;
+
+		// Update error display
+		this.errorEl.classList.toggle('hidden', !newState.error);
+		this.errorEl.textContent = newState.error ?? '';
+
+		// Update branch list
+		this.updateBranches(oldState?.branches ?? [], newState.branches);
+	}
+
+	/**
+	 * Generic differ for lists with animations
+	 */
+	private diffList<T>(
+		container: HTMLElement,
+		oldItems: T[],
+		newItems: T[],
+		config: DiffListConfig<T>
+	): void {
+		const {
+			getKey,
+			render,
+			update,
+			needsUpdate,
+			itemSelector,
+			itemClass,
+		} = config;
+
+		// Build map of existing elements
+		const existingElements = new Map<string, HTMLElement>();
+		container.querySelectorAll(itemSelector).forEach((el) => {
+			const key = (el as HTMLElement).dataset.key;
+			if (key) {
+				existingElements.set(key, el as HTMLElement);
+			}
+		});
+
+		const newKeys = new Set(newItems.map(getKey));
+
+		// Remove items that no longer exist
+		for (const [key, element] of existingElements) {
+			if (!newKeys.has(key)) {
+				this.animateOut(element, () => {
+					if (element.parentNode === container) {
+						container.removeChild(element);
+					}
+				});
+				existingElements.delete(key);
+			}
+		}
+
+		// Add or update items
+		let previousElement: HTMLElement | null = null;
+		for (const item of newItems) {
+			const key = getKey(item);
+			const existingElement = existingElements.get(key);
+
+			if (existingElement) {
+				// Update existing item if needed
+				if (needsUpdate && update) {
+					const child = existingElement.querySelector('[data-content]') as HTMLElement;
+					if (child && needsUpdate(child, item)) {
+						const newChild = render(item);
+						this.animateUpdate(newChild);
+						child.replaceWith(newChild);
+					}
+				}
+
+				// Reorder if necessary
+				const nextElement: ChildNode | null = previousElement ? previousElement.nextSibling : container.firstChild;
+				if (existingElement !== nextElement) {
+					container.insertBefore(existingElement, nextElement);
+				}
+				previousElement = existingElement;
+			} else {
+				// Add new item
+				const wrapper = document.createElement('li');
+				wrapper.className = itemClass;
+				wrapper.dataset.key = key;
+				
+				const child = render(item);
+				wrapper.appendChild(child);
+
+				const nextElement: ChildNode | null = previousElement ? previousElement.nextSibling : container.firstChild;
+				container.insertBefore(wrapper, nextElement);
+
+				this.animateIn(wrapper);
+				previousElement = wrapper;
+			}
+		}
+	}
+
+	/**
+	 * Animate element entrance
+	 */
+	private animateIn(element: HTMLElement): void {
+		element.classList.add('item-enter');
+		requestAnimationFrame(() => {
+			element.classList.remove('item-enter');
+		});
+	}
+
+	/**
+	 * Animate element exit
+	 */
+	private animateOut(element: HTMLElement, onComplete: () => void): void {
+		element.classList.add('item-exit');
+		setTimeout(onComplete, StackView.ANIMATION_DURATION);
+	}
+
+	/**
+	 * Animate element update (flash)
+	 */
+	private animateUpdate(element: HTMLElement): void {
+		element.classList.add('item-updated');
+		setTimeout(() => {
+			element.classList.remove('item-updated');
+		}, StackView.FLASH_DURATION);
+	}
+
+	private updateBranches(oldBranches: BranchViewModel[], newBranches: BranchViewModel[]): void {
+		if (newBranches.length === 0) {
+			this.emptyEl.textContent = this.currentState?.error ?? 'No branches in the current stack.';
+			this.emptyEl.classList.remove('hidden');
+			
+			// Fade out all existing items
+			const items = this.stackList.querySelectorAll('.stack-item');
+			items.forEach((item, index) => {
+				(item as HTMLElement).style.animationDelay = `${index * 30}ms`;
+				this.animateOut(item as HTMLElement, () => {});
+			});
+			setTimeout(() => {
+				this.stackList.innerHTML = '';
+			}, items.length * 30 + StackView.ANIMATION_DURATION);
+			return;
+		}
+
+		this.emptyEl.classList.add('hidden');
+
+		// Reverse to show in correct stack order (top to bottom)
+		const reversedNew = [...newBranches].reverse();
+		const reversedOld = [...oldBranches].reverse();
+
+		this.diffList(this.stackList, reversedOld, reversedNew, {
+			getKey: (branch) => branch.name,
+			render: (branch) => this.renderBranch(branch),
+			update: (card, branch) => this.updateBranch(card, branch),
+			needsUpdate: (card, branch) => this.branchNeedsUpdate(card, branch),
+			itemSelector: '.stack-item',
+			itemClass: 'stack-item',
+		});
+	}
+
+	private renderBranch(branch: BranchViewModel): HTMLElement {
+		const card = document.createElement('article');
+		card.className = 'branch-card';
+		card.dataset.content = 'true';
+		card.dataset.branch = branch.name;
+
+		if (branch.current) {
+			card.classList.add('is-current');
+		}
+		if (branch.restack) {
+			card.classList.add('needs-restack');
+		}
+		card.draggable = true;
+
+		// Store branch data for diffing
+		(card as any)._branchData = {
+			current: branch.current,
+			restack: branch.restack,
+			commitsCount: branch.commits?.length ?? 0,
+			hasChange: Boolean(branch.change),
+			changeId: branch.change?.id,
+			changeStatus: branch.change?.status,
+		} as BranchData;
+
+		const header = this.renderBranchHeader(branch, card);
+		card.appendChild(header);
+
+		if (branch.change?.status) {
+			const meta = this.renderBranchMeta(branch);
+			card.appendChild(meta);
+		}
+
+		if (branch.commits && branch.commits.length > 0) {
+			const commitsContainer = this.renderCommitsContainer(branch, card);
+			card.appendChild(commitsContainer);
+		}
+
+		this.enableDrag(card);
+		return card;
+	}
+
+	private updateBranch(card: HTMLElement, branch: BranchViewModel): void {
+		const oldData = (card as any)._branchData as BranchData;
+		
+		// Update classes
+		card.classList.toggle('is-current', Boolean(branch.current));
+		card.classList.toggle('needs-restack', Boolean(branch.restack));
+
+		// Update stored data
+		(card as any)._branchData = {
+			current: branch.current,
+			restack: branch.restack,
+			commitsCount: branch.commits?.length ?? 0,
+			hasChange: Boolean(branch.change),
+			changeId: branch.change?.id,
+			changeStatus: branch.change?.status,
+		} as BranchData;
+
+		// Granular updates with targeted animations
+		if (oldData) {
+			// Flash current branch indicator if it changed
+			if (oldData.current !== Boolean(branch.current)) {
+				const currentIcon = card.querySelector('.current-branch-icon');
+				if (currentIcon) {
+					this.animateUpdate(currentIcon as HTMLElement);
+				}
+			}
+
+			// Flash restack tag if it changed
+			if (oldData.restack !== Boolean(branch.restack)) {
+				const restackTag = card.querySelector('.tag-warning');
+				if (restackTag) {
+					this.animateUpdate(restackTag as HTMLElement);
+				}
+			}
+
+			// Flash PR link if it changed
+			if (oldData.hasChange !== Boolean(branch.change) || oldData.changeId !== branch.change?.id) {
+				const prLink = card.querySelector('.branch-pr-link');
+				if (prLink) {
+					this.animateUpdate(prLink as HTMLElement);
+				}
+			}
+
+			// Flash meta status if it changed
+			if (oldData.changeStatus !== branch.change?.status) {
+				const metaStatus = card.querySelector('.branch-meta span');
+				if (metaStatus) {
+					this.animateUpdate(metaStatus as HTMLElement);
+				}
+			}
+		}
+
+		// Update header (tags, etc.) - only if needed
+		const header = card.querySelector('.branch-header');
+		if (header) {
+			const newHeader = this.renderBranchHeader(branch, card);
+			header.replaceWith(newHeader);
+		}
+
+		// Update meta
+		const existingMeta = card.querySelector('.branch-meta');
+		if (branch.change?.status) {
+			const newMeta = this.renderBranchMeta(branch);
+			if (existingMeta) {
+				existingMeta.replaceWith(newMeta);
+			} else {
+				const insertBefore = card.querySelector('.branch-commits');
+				if (insertBefore) {
+					card.insertBefore(newMeta, insertBefore);
+				} else {
+					card.appendChild(newMeta);
+				}
+			}
+		} else if (existingMeta) {
+			existingMeta.remove();
+		}
+
+		// Update commits with animation
+		const existingCommits = card.querySelector('.branch-commits');
+		if (branch.commits && branch.commits.length > 0) {
+			const newCommitsContainer = this.renderCommitsContainer(branch, card);
+			if (existingCommits) {
+				const wasExpanded = card.classList.contains('expanded');
+				existingCommits.replaceWith(newCommitsContainer);
+				// Restore expanded state
+				if (wasExpanded) {
+					card.classList.add('expanded');
+				}
+			} else {
+				card.appendChild(newCommitsContainer);
+			}
+		} else if (existingCommits) {
+			existingCommits.remove();
+		}
+	}
+
+	private branchNeedsUpdate(card: HTMLElement, branch: BranchViewModel): boolean {
+		const oldData = (card as any)._branchData as BranchData;
+		if (!oldData) return true;
+
+		return (
+			oldData.current !== Boolean(branch.current) ||
+			oldData.restack !== Boolean(branch.restack) ||
+			oldData.commitsCount !== (branch.commits?.length ?? 0) ||
+			oldData.hasChange !== Boolean(branch.change) ||
+			oldData.changeId !== branch.change?.id ||
+			oldData.changeStatus !== branch.change?.status
+		);
+	}
+
+	private renderBranchHeader(branch: BranchViewModel, card: HTMLElement): HTMLElement {
+		const header = document.createElement('div');
+		header.className = 'branch-header';
+
+		const hasCommits = branch.commits && branch.commits.length > 0;
+
+		if (hasCommits) {
+			const toggle = document.createElement('i');
+			toggle.className = 'branch-toggle codicon codicon-chevron-right';
+			toggle.role = 'button';
+			toggle.tabIndex = 0;
+			const expandedByDefault = branch.current === true;
+			if (expandedByDefault) {
+				card.classList.add('expanded');
+				toggle.classList.add('expanded');
+			}
+			header.appendChild(toggle);
+
+			header.style.cursor = 'pointer';
+			header.addEventListener('click', (event: Event) => {
+				if ((event.target as HTMLElement).closest('.branch-pr-link')) {
+					return;
+				}
+				card.classList.toggle('expanded');
+				toggle.classList.toggle('expanded');
+			});
+		} else {
+			const spacer = document.createElement('span');
+			spacer.className = 'branch-toggle-spacer';
+			header.appendChild(spacer);
+		}
+
+		const nameSpan = document.createElement('span');
+		nameSpan.className = 'branch-name';
+		nameSpan.textContent = branch.name;
+		header.appendChild(nameSpan);
+
+		const tags = document.createElement('div');
+		tags.className = 'branch-tags';
+		
+		if (branch.current) {
+			const currentIcon = document.createElement('i');
+			currentIcon.className = 'codicon codicon-arrow-right current-branch-icon';
+			currentIcon.title = 'Current branch';
+			tags.appendChild(currentIcon);
+		}
+		
+		if (branch.restack) {
+			tags.appendChild(this.createTag('Restack', 'warning'));
+		}
+		
+		if (branch.change) {
+			const button = document.createElement('button');
+			button.type = 'button';
+			button.className = 'branch-pr-link';
+			button.textContent = branch.change.id;
+			if (branch.change.url) {
+				button.addEventListener('click', (event: Event) => {
+					event.stopPropagation();
+					this.vscode.postMessage({ type: 'openChange', url: branch.change?.url! });
+				});
+			} else {
+				button.disabled = true;
+			}
+			tags.appendChild(button);
+		}
+		
+		header.appendChild(tags);
+		return header;
+	}
+
+	private renderBranchMeta(branch: BranchViewModel): HTMLElement {
+		const meta = document.createElement('div');
+		meta.className = 'branch-meta';
+		const status = document.createElement('span');
+		status.textContent = branch.change!.status!;
+		meta.appendChild(status);
+		return meta;
+	}
+
+	private renderCommitsContainer(branch: BranchViewModel, card: HTMLElement): HTMLElement {
+		const container = document.createElement('div');
+		container.className = 'branch-commits';
+		container.dataset.commitsContainer = 'true';
+
+		// Store initial visible count
+		const initialCount = Math.min(branch.commits!.length, StackView.COMMIT_CHUNK);
+		this.renderCommitsIntoContainer(container, branch.commits!, initialCount);
+
+		return container;
+	}
+
+	private renderCommitsIntoContainer(container: HTMLElement, commits: BranchViewModel['commits'], visibleCount: number): void {
+		if (!commits) return;
+		
+		const newCommits = commits.slice(0, visibleCount);
+
+		// Use diffList to reconcile commits inside the container
+		this.diffList(container, Array.from(container.querySelectorAll('.commit-wrapper')).map(el => {
+			const key = (el as HTMLElement).dataset.key;
+			return key ? { sha: key, shortSha: '', subject: '' } : null;
+		}).filter((item): item is NonNullable<BranchViewModel['commits']>[0] => item !== null), newCommits, {
+			getKey: (c) => c.sha,
+			render: (c) => {
+				const wrapper = document.createElement('div');
+				wrapper.className = 'commit-wrapper';
+				wrapper.dataset.key = c.sha;
+				const row = this.renderCommitItem(c);
+				wrapper.appendChild(row);
+				return wrapper;
+			},
+			needsUpdate: (el, c) => {
+				const row = el.querySelector('.commit-item');
+				if (!row) return true;
+				// simple check: subject or shortSha changed
+				const subjectEl = row.querySelector('.commit-subject');
+				const shaEl = row.querySelector('.commit-sha');
+				return (
+					subjectEl?.textContent !== c.subject ||
+					shaEl?.textContent !== c.shortSha
+				);
+			},
+			update: (el, c) => {
+				const newRow = this.renderCommitItem(c);
+				const oldRow = el.querySelector('.commit-item');
+				if (oldRow) {
+					// Check what specifically changed and flash only that part
+					const oldSubject = oldRow.querySelector('.commit-subject')?.textContent;
+					const oldSha = oldRow.querySelector('.commit-sha')?.textContent;
+					
+					oldRow.replaceWith(newRow);
+					
+					// Flash changed elements
+					if (oldSubject !== c.subject) {
+						const newSubject = newRow.querySelector('.commit-subject');
+						if (newSubject) this.animateUpdate(newSubject as HTMLElement);
+					}
+					if (oldSha !== c.shortSha) {
+						const newSha = newRow.querySelector('.commit-sha');
+						if (newSha) this.animateUpdate(newSha as HTMLElement);
+					}
+				}
+			},
+			itemSelector: '.commit-wrapper',
+			itemClass: 'commit-wrapper',
+		});
+
+		// Add "show more" button if needed (ensure it's after the commits)
+		const existingMore = container.querySelector('.branch-more');
+		if (existingMore) existingMore.remove();
+		if (visibleCount < commits.length) {
+			const remaining = commits.length - visibleCount;
+			const more = document.createElement('button');
+			more.type = 'button';
+			more.className = 'branch-more';
+			more.textContent = remaining > StackView.COMMIT_CHUNK
+				? `Show more (${remaining})`
+				: `Show remaining ${remaining}`;
+			more.addEventListener('click', (event: Event) => {
+				event.stopPropagation();
+				this.renderCommitsIntoContainer(container, commits, visibleCount + StackView.COMMIT_CHUNK);
+			});
+			container.appendChild(more);
+		}
+	}
+
+	private renderCommitItem(commit: NonNullable<BranchViewModel['commits']>[0]): HTMLElement {
+		const row = document.createElement('button');
+		row.type = 'button';
+		row.className = 'commit-item';
+		row.dataset.content = 'true';
+		row.addEventListener('click', (event: Event) => {
+			event.stopPropagation();
+			this.vscode.postMessage({ type: 'openCommit', sha: commit.sha });
+		});
+
+		const subject = document.createElement('span');
+		subject.className = 'commit-subject';
+		subject.textContent = commit.subject;
+		row.appendChild(subject);
+
+		const sha = document.createElement('span');
+		sha.className = 'commit-sha';
+		sha.textContent = commit.shortSha;
+		row.appendChild(sha);
+
+		return row;
+	}
+
+	private createTag(label: string, variant: string): HTMLElement {
+		const span = document.createElement('span');
+		span.className = 'tag' + (variant ? ' tag-' + variant : '');
+		span.textContent = label;
+		return span;
+	}
+
+	private enableDrag(card: HTMLElement): void {
+		card.addEventListener('dragstart', (event: DragEvent) => {
+			const branch = card.dataset.branch ?? '';
+			event.dataTransfer?.setData('text/plain', branch);
+			event.dataTransfer?.setDragImage(card, card.clientWidth / 2, card.clientHeight / 2);
+			card.classList.add('dragging');
+		});
+		
+		card.addEventListener('dragend', () => {
+			card.classList.remove('dragging');
+		});
+		
+		card.addEventListener('dragover', (event: DragEvent) => {
+			event.preventDefault();
+			card.classList.add('drag-over');
+			if (event.dataTransfer) {
+				event.dataTransfer.dropEffect = 'move';
+			}
+		});
+		
+		card.addEventListener('dragleave', () => {
+			card.classList.remove('drag-over');
+		});
+		
+		card.addEventListener('drop', (event: DragEvent) => {
+			event.preventDefault();
+			card.classList.remove('drag-over');
+			const source = event.dataTransfer?.getData('text/plain');
+			const target = card.dataset.branch;
+			if (!source || !target || source === target) {
+				return;
+			}
+			this.vscode.postMessage({ type: 'branchDrop', source, target });
+		});
+	}
+}
+
+// Initialize the stack view when the DOM is ready
+document.addEventListener('DOMContentLoaded', () => {
+	new StackView();
+});

@@ -4,7 +4,6 @@
 
 const path = require('path');
 
-//@ts-check
 /** @typedef {import('webpack').Configuration} WebpackConfig **/
 
 /** @type WebpackConfig */
@@ -45,4 +44,38 @@ const extensionConfig = {
     level: "log", // enables logging required for problem matchers
   },
 };
-module.exports = [ extensionConfig ];
+/** @type WebpackConfig */
+const webviewConfig = {
+	target: 'web', // Webview runs in a web context
+	mode: 'none',
+
+	entry: './src/stackView/stackView.ts',
+	output: {
+		path: path.resolve(__dirname, 'dist'),
+		filename: 'stackView.js',
+		libraryTarget: 'var',
+		library: 'stackView'
+	},
+	resolve: {
+		extensions: ['.ts', '.js']
+	},
+	module: {
+		rules: [
+			{
+				test: /\.ts$/,
+				exclude: /node_modules/,
+				use: [
+					{
+						loader: 'ts-loader'
+					}
+				]
+			}
+		]
+	},
+	devtool: 'nosources-source-map',
+	infrastructureLogging: {
+		level: "log",
+	},
+};
+
+module.exports = [ extensionConfig, webviewConfig ];
