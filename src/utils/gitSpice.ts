@@ -352,3 +352,21 @@ export async function execBranchSubmit(folder: vscode.WorkspaceFolder, branchNam
 		return { error: `Failed to execute gs branch submit: ${message}` };
 	}
 }
+
+export async function execBranchCreate(folder: vscode.WorkspaceFolder, message: string): Promise<BranchCommandResult> {
+	try {
+		const { stdout, stderr } = await execFileAsync('gs', ['branch', 'create', '-m', message, '-a', '--no-prompt', '--no-verify'], {
+			cwd: folder.uri.fsPath,
+			timeout: 10000, // Reduced timeout for faster execution
+		});
+
+		if (stderr && stderr.trim()) {
+			return { error: `git-spice error: ${stderr.trim()}` };
+		}
+
+		return { value: undefined };
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		return { error: `Failed to execute gs branch create: ${message}` };
+	}
+}

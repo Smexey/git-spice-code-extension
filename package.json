@@ -21,6 +21,20 @@
         "command": "git-spice.refreshBranches",
         "title": "Refresh",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "git-spice.branchCreateFromCommitMessage",
+        "title": "Git Spice: Create Branch from Commit Message"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "git-spice.branchCreateFromCommitMessage",
+        "key": "cmd+shift+enter",
+        "mac": "cmd+shift+enter",
+        "win": "ctrl+shift+enter",
+        "linux": "ctrl+shift+enter",
+        "when": "focusedView == 'workbench.scm' && inputFocus"
       }
     ],
     "views": {
