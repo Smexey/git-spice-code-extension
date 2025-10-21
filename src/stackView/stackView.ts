@@ -147,10 +147,10 @@ class StackView {
 		event.stopPropagation();
 
 		this.currentContextBranch = branchName;
-		
+
 		// Update menu items based on current branch
 		this.updateContextMenuItems(branchName);
-		
+
 		// Position the context menu
 		this.contextMenu.style.left = `${event.clientX}px`;
 		this.contextMenu.style.top = `${event.clientY}px`;
@@ -165,7 +165,7 @@ class StackView {
 		menuItems.forEach((item) => {
 			const menuItem = item as HTMLElement;
 			const action = menuItem.dataset.action;
-			
+
 			// Disable edit for non-current branches
 			if (action === 'branchEdit') {
 				const isCurrent = branch?.current;
@@ -237,7 +237,7 @@ class StackView {
 
 	private updateState(newState: DisplayState): void {
 		const oldState = this.currentState;
-		
+
 		// Avoid no-op updates: shallow compare serialized JSON (cheap for small states)
 		try {
 			const oldJson = JSON.stringify(oldState);
@@ -257,10 +257,10 @@ class StackView {
 
 		// Update branch list
 		this.updateBranches(oldState?.branches ?? [], newState.branches);
-		
+
 		// Handle pending reorder state
 		this.updatePendingReorder(newState.pendingReorder);
-		
+
 		// Initialize SortableJS after branches are rendered
 		this.initializeSortable();
 	}
@@ -320,7 +320,7 @@ class StackView {
 						const newChild = render(item);
 						// Don't animate here - let the update function handle specific animations
 						child.replaceWith(newChild);
-						
+
 						// Update the wrapper's dataset.branch if it changed
 						if (newChild.dataset.branch) {
 							existingElement.dataset.branch = newChild.dataset.branch;
@@ -339,7 +339,7 @@ class StackView {
 				const wrapper = document.createElement('li');
 				wrapper.className = itemClass;
 				wrapper.dataset.key = key;
-				
+
 				const child = render(item);
 				wrapper.appendChild(child);
 
@@ -381,7 +381,7 @@ class StackView {
 	private animateUpdate(element: HTMLElement): void {
 		// Prevent overlapping animations by removing existing animation class first
 		element.classList.remove('item-updated');
-		
+
 		// Use requestAnimationFrame to ensure the class removal takes effect
 		requestAnimationFrame(() => {
 			element.classList.add('item-updated');
@@ -395,12 +395,12 @@ class StackView {
 		if (newBranches.length === 0) {
 			this.emptyEl.textContent = this.currentState?.error ?? 'No branches in the current stack.';
 			this.emptyEl.classList.remove('hidden');
-			
+
 			// Fade out all existing items
 			const items = this.stackList.querySelectorAll('.stack-item');
 			items.forEach((item, index) => {
 				(item as HTMLElement).style.animationDelay = `${index * 30}ms`;
-				this.animateOut(item as HTMLElement, () => {});
+				this.animateOut(item as HTMLElement, () => { });
 			});
 			setTimeout(() => {
 				this.stackList.innerHTML = '';
@@ -470,7 +470,7 @@ class StackView {
 
 		// Find the branch element that was moved
 		const branchElement = this.stackList.querySelector(`[data-branch="${pendingReorder.branchName}"]`) as HTMLElement;
-		
+
 		if (!branchElement) {
 			console.error('❌ Branch element not found for:', pendingReorder.branchName);
 			return;
@@ -560,7 +560,7 @@ class StackView {
 
 	private updateBranch(card: HTMLElement, branch: BranchViewModel): void {
 		const oldData = (card as any)._branchData as BranchData;
-		
+
 		// Update classes
 		card.classList.toggle('is-current', Boolean(branch.current));
 		card.classList.toggle('needs-restack', Boolean(branch.restack));
@@ -702,18 +702,12 @@ class StackView {
 
 		const tags = document.createElement('div');
 		tags.className = 'branch-tags';
-		
-		if (branch.current) {
-			const currentIcon = document.createElement('i');
-			currentIcon.className = 'codicon codicon-arrow-right current-branch-icon';
-			currentIcon.title = 'Current branch';
-			tags.appendChild(currentIcon);
-		}
-		
+
+
 		if (branch.restack) {
 			tags.appendChild(this.createTag('Restack', 'warning'));
 		}
-		
+
 		if (branch.change) {
 			const button = document.createElement('button');
 			button.type = 'button';
@@ -729,7 +723,7 @@ class StackView {
 			}
 			tags.appendChild(button);
 		}
-		
+
 		header.appendChild(tags);
 		return header;
 	}
@@ -757,7 +751,7 @@ class StackView {
 
 	private renderCommitsIntoContainer(container: HTMLElement, commits: BranchViewModel['commits'], visibleCount: number): void {
 		if (!commits) return;
-		
+
 		const newCommits = commits.slice(0, visibleCount);
 
 		// Use diffList to reconcile commits inside the container
@@ -792,9 +786,9 @@ class StackView {
 					// Check what specifically changed and flash only that part
 					const oldSubject = oldRow.querySelector('.commit-subject')?.textContent;
 					const oldSha = oldRow.querySelector('.commit-sha')?.textContent;
-					
+
 					oldRow.replaceWith(newRow);
-					
+
 					// Flash changed elements
 					if (oldSubject !== c.subject) {
 						const newSubject = newRow.querySelector('.commit-subject');
@@ -913,14 +907,14 @@ class StackView {
 
 					// Get branch name from dataset
 					const branchName = (evt.item as HTMLElement)?.dataset?.branch;
-					
+
 					if (!branchName || typeof branchName !== 'string' || branchName.trim() === '') {
 						console.error('❌ No valid branch name found in dataset for item:', evt.item);
 						return;
 					}
 
 					console.log('🔄 SortableJS reorder detected:', { branchName, oldIndex: evt.oldIndex, newIndex: evt.newIndex });
-					
+
 					this.vscode.postMessage({
 						type: 'branchReorder',
 						oldIndex: evt.oldIndex,
