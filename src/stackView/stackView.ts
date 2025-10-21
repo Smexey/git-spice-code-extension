@@ -830,7 +830,11 @@ class StackView {
 		row.dataset.content = 'true';
 		row.addEventListener('click', (event: Event) => {
 			event.stopPropagation();
-			this.vscode.postMessage({ type: 'openCommit', sha: commit.sha });
+			if (typeof commit.sha !== 'string' || commit.sha.length === 0) {
+				console.error('❌ Invalid commit SHA provided for diff request:', commit);
+				return;
+			}
+			this.vscode.postMessage({ type: 'openCommitDiff', sha: commit.sha });
 		});
 
 		const subject = document.createElement('span');

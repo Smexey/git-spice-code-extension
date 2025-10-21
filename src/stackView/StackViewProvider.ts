@@ -59,6 +59,11 @@ export class StackViewProvider implements vscode.WebviewViewProvider {
 						void vscode.commands.executeCommand('git.openCommit', message.sha);
 					}
 					return;
+				case 'openCommitDiff':
+					if (typeof message.sha === 'string') {
+						void this.handleOpenCommitDiff(message.sha);
+					}
+					return;
 				case 'branchDrop':
 					if (typeof message.source === 'string' && typeof message.target === 'string') {
 						void this.handleBranchDrop(message.source, message.target);
@@ -170,6 +175,115 @@ export class StackViewProvider implements vscode.WebviewViewProvider {
 		await vscode.window.showInformationMessage(
 			`Drag-and-drop planned: move ${source} onto ${target}`,
 		);
+	}
+
+	/**
+	 * Opens a changes view for the specified commit, comparing it with its parent.
+	 * Gets the list of files changed in the commit and opens them in a single changes editor.
+	 *
+	 * @param sha - The commit SHA to view
+	 */
+	private async handleOpenCommitDiff(sha: string): Promise<void> {
+		// Validate input
+		if (typeof sha !== 'string' || sha.trim() === '') {
+			console.error('❌ Invalid commit SHA provided to handleOpenCommitDiff:', sha);
+			return;
+		}
+
+		// Validate workspace folder
+		if (!this.workspaceFolder) {
+			console.error('❌ No workspace folder available for commit diff');
+			void vscode.window.showErrorMessage('No workspace folder available.');
+			return;
+		}
+
+		try {
+			// Get the list of files changed in this commit with their status
+			const { execFile } = await import('node:child_process');
+			const { promisify } = await import('node:util');
+			const path = await import('node:path');
+			const execFileAsync = promisify(execFile);
+
+			// Use git diff-tree to get changed files with status
+			// --no-commit-id: suppress commit ID output
+			// --name-status: show file names with status (A=added, M=modified, D=deleted)
+			// -r: recursive
+			const { stdout } = await execFileAsync(
+				'git',
+				['diff-tree', '--no-commit-id', '--name-status', '-r', sha],
+				{ cwd: this.workspaceFolder.uri.fsPath }
+			);
+
+			const lines = stdout.trim().split('\n').filter(l => l.length > 0);
+
+			if (lines.length === 0) {
+				void vscode.window.showInformationMessage('No files changed in this commit.');
+				return;
+			}
+
+			// Build resource list for vscode.changes command
+			// Each entry must be a tuple of [label, left, right] where all are URIs
+			const parentRef = `${sha}^`;
+			const commitRef = sha;
+			// Git's empty tree SHA - used for new files that don't exist in parent
+			const emptyTree = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
+
+			const resourceList: [vscode.Uri, vscode.Uri | undefined, vscode.Uri | undefined][] = [];
+			
+			for (const line of lines) {
+				// Parse status and file path (format: "M\tfile.txt" or "A\tfile.txt")
+				const match = line.match(/^([A-Z])\t(.+)$/);
+				if (!match) {
+					continue;
+				}
+
+				const [, status, file] = match;
+				
+				// Construct absolute file path
+				const absolutePath = path.join(this.workspaceFolder!.uri.fsPath, file);
+				const fileUri = vscode.Uri.file(absolutePath);
+
+				let leftUri: vscode.Uri | undefined;
+				let rightUri: vscode.Uri | undefined;
+
+				if (status === 'A') {
+					// Added file: compare empty tree to commit version
+					const leftQuery = JSON.stringify({ path: fileUri.fsPath, ref: emptyTree });
+					const rightQuery = JSON.stringify({ path: fileUri.fsPath, ref: commitRef });
+					leftUri = fileUri.with({ scheme: 'git', query: leftQuery });
+					rightUri = fileUri.with({ scheme: 'git', query: rightQuery });
+				} else if (status === 'D') {
+					// Deleted file: compare parent to empty tree
+					const leftQuery = JSON.stringify({ path: fileUri.fsPath, ref: parentRef });
+					const rightQuery = JSON.stringify({ path: fileUri.fsPath, ref: emptyTree });
+					leftUri = fileUri.with({ scheme: 'git', query: leftQuery });
+					rightUri = fileUri.with({ scheme: 'git', query: rightQuery });
+				} else {
+					// Modified file: compare parent to commit
+					const leftQuery = JSON.stringify({ path: fileUri.fsPath, ref: parentRef });
+					const rightQuery = JSON.stringify({ path: fileUri.fsPath, ref: commitRef });
+					leftUri = fileUri.with({ scheme: 'git', query: leftQuery });
+					rightUri = fileUri.with({ scheme: 'git', query: rightQuery });
+				}
+
+				// Add as tuple: [label, left, right]
+				// Use the file URI as the label
+				resourceList.push([fileUri, leftUri, rightUri]);
+			}
+
+			const title = `Changes in ${sha.substring(0, 7)}`;
+
+			// Use vscode.changes to open all files in a single changes editor
+			await vscode.commands.executeCommand(
+				'vscode.changes',
+				title,
+				resourceList
+			);
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			console.error('❌ Error opening commit diff:', message);
+			void vscode.window.showErrorMessage(`Failed to open commit diff: ${message}`);
+		}
 	}
 
 	/**
