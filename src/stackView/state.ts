@@ -1,9 +1,10 @@
+import type { BranchReorderInfo } from '../utils/gitSpice';
 import type { BranchChangeViewModel, BranchRecord, BranchViewModel, DisplayState } from './types';
 
 export function buildDisplayState(
 	branches: BranchRecord[], 
 	error?: string, 
-	pendingReorder?: { branchName: string; oldIndex: number; newIndex: number }
+	pendingReorder?: BranchReorderInfo,
 ): DisplayState {
 	const branchMap = new Map(branches.map((branch) => [branch.name, branch]));
 	const current = branches.find((branch) => branch.current);
@@ -111,7 +112,7 @@ function orderStack(branches: BranchRecord[], branchMap: Map<string, BranchRecor
  */
 function applyPendingReorder(
 	branches: BranchRecord[], 
-	pendingReorder: { branchName: string; oldIndex: number; newIndex: number }
+	pendingReorder: BranchReorderInfo,
 ): BranchRecord[] {
 	const reordered = [...branches];
 	

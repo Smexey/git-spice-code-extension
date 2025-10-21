@@ -1,4 +1,5 @@
 import type { GitSpiceBranch, GitSpiceChangeStatus } from '../gitSpiceSchema';
+import type { BranchReorderInfo as GitSpiceBranchReorderInfo } from '../utils/gitSpice';
 
 export type BranchRecord = GitSpiceBranch;
 
@@ -22,12 +23,10 @@ export type BranchViewModel = {
 	commits?: BranchCommitViewModel[];
 };
 
+export type BranchReorderInfo = GitSpiceBranchReorderInfo;
+
 export type DisplayState = {
 	branches: BranchViewModel[];
 	error?: string;
-	pendingReorder?: {
-		branchName: string;
-		oldIndex: number;
-		newIndex: number;
-	};
+	pendingReorder?: BranchReorderInfo;
 };

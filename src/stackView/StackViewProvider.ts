@@ -1,10 +1,10 @@
 import * as vscode from 'vscode';
 
 import { buildDisplayState } from './state';
-import type { BranchRecord, DisplayState } from './types';
+import type { BranchRecord, BranchReorderInfo } from './types';
 import type { WebviewMessage } from './webviewTypes';
-import { 
-	execGitSpice, 
+import {
+	execGitSpice,
 	execStackEdit,
 	execBranchUntrack,
 	execBranchCheckout,
@@ -13,7 +13,8 @@ import {
 	execBranchEdit,
 	execBranchRename,
 	execBranchRestack,
-	execBranchSubmit
+	execBranchSubmit,
+	type BranchCommandResult,
 } from '../utils/gitSpice';
 import { readMediaFile, readDistFile } from '../utils/readFileSync';
 
@@ -22,8 +23,7 @@ export class StackViewProvider implements vscode.WebviewViewProvider {
 	private branches: BranchRecord[] = [];
 	private lastError: string | undefined;
 	private fileWatcher: vscode.FileSystemWatcher | undefined;
-	private pendingState: DisplayState | null = null;
-	private pendingReorder: { branchName: string; oldIndex: number; newIndex: number } | null = null;
+	private pendingReorder: BranchReorderInfo | null = null;
 
 	constructor(private workspaceFolder: vscode.WorkspaceFolder | undefined, private readonly extensionUri: vscode.Uri) {
 		// No initialization here - everything happens after resolveWebviewView
@@ -203,10 +203,12 @@ export class StackViewProvider implements vscode.WebviewViewProvider {
 			return;
 		}
 
-		console.log('🔄 Setting pending reorder:', { branchName, oldIndex, newIndex });
+		const normalizedBranch = branchName.trim();
+		const reorder: BranchReorderInfo = { branchName: normalizedBranch, oldIndex, newIndex };
+		console.log('🔄 Setting pending reorder:', reorder);
 		
 		// Set pending reorder state
-		this.pendingReorder = { branchName, oldIndex, newIndex };
+		this.pendingReorder = reorder;
 		this.pushState();
 	}
 
@@ -218,7 +220,8 @@ export class StackViewProvider implements vscode.WebviewViewProvider {
 	 */
 	private async handleConfirmReorder(branchName: string): Promise<void> {
 		// Validate input
-		if (typeof branchName !== 'string' || branchName.trim() === '') {
+		const trimmed = typeof branchName === 'string' ? branchName.trim() : '';
+		if (trimmed.length === 0) {
 			console.error('❌ Invalid branch name provided to handleConfirmReorder:', branchName);
 			void vscode.window.showErrorMessage('Invalid branch name provided.');
 			return;
@@ -226,13 +229,14 @@ export class StackViewProvider implements vscode.WebviewViewProvider {
 
 		// Validate pending reorder state
 		if (!this.pendingReorder) {
-			console.warn('⚠️ No pending reorder found when confirming reorder for:', branchName);
+			console.warn('⚠️ No pending reorder found when confirming reorder for:', trimmed);
 			void vscode.window.showWarningMessage('No pending reorder operation found.');
 			return;
 		}
 
-		if (this.pendingReorder.branchName !== branchName) {
-			console.error('❌ Branch name mismatch in pending reorder. Expected:', branchName, 'but found:', this.pendingReorder.branchName);
+		const expectedBranch = this.pendingReorder.branchName;
+		if (expectedBranch !== trimmed) {
+			console.error('❌ Branch name mismatch in pending reorder. Expected:', trimmed, 'but found:', this.pendingReorder.branchName);
 			void vscode.window.showErrorMessage('Branch name mismatch in pending reorder operation.');
 			return;
 		}
@@ -244,7 +248,7 @@ export class StackViewProvider implements vscode.WebviewViewProvider {
 			return;
 		}
 
-		const { oldIndex, newIndex } = this.pendingReorder;
+		const { oldIndex, newIndex, branchName: pendingBranch } = this.pendingReorder;
 		
 		// Validate reorder indices
 		if (typeof oldIndex !== 'number' || typeof newIndex !== 'number') {
@@ -262,29 +266,29 @@ export class StackViewProvider implements vscode.WebviewViewProvider {
 		// Clear pending state before operation to prevent double-execution
 		this.pendingReorder = null;
 
-		console.log('🔄 Executing branch reorder for:', branchName);
-		console.log('🔄 Reorder details:', { oldIndex, newIndex, branchName });
+		console.log('🔄 Executing branch reorder for:', pendingBranch);
+		console.log('🔄 Reorder details:', { oldIndex, newIndex, branchName: pendingBranch });
 
 		// Show progress notification
 		await vscode.window.withProgress({
 			location: vscode.ProgressLocation.Notification,
-			title: `Reordering branch: ${branchName}`,
+			title: `Reordering branch: ${pendingBranch}`,
 			cancellable: false,
 		}, async (progress) => {
 			try {
 				// Execute branch reorder using gs stack edit
-				const result = await execStackEdit(this.workspaceFolder!, { oldIndex, newIndex, branchName });
+				const result = await execStackEdit(this.workspaceFolder!, { oldIndex, newIndex, branchName: pendingBranch });
 
 				if ('error' in result) {
 					console.error('🔄 Branch reorder failed:', result.error);
 					void vscode.window.showErrorMessage(`Failed to reorder branch: ${result.error}`);
 					
 					// Restore pending state on failure so user can retry
-					this.pendingReorder = { branchName, oldIndex, newIndex };
+					this.pendingReorder = { branchName: pendingBranch, oldIndex, newIndex };
 					this.pushState();
 				} else {
 					console.log('🔄 Branch reorder successful');
-					void vscode.window.showInformationMessage(`Branch ${branchName} reordered successfully.`);
+					void vscode.window.showInformationMessage(`Branch ${pendingBranch} reordered successfully.`);
 				}
 
 				// Always refresh state to reflect current git-spice state
@@ -295,7 +299,7 @@ export class StackViewProvider implements vscode.WebviewViewProvider {
 				void vscode.window.showErrorMessage(`Unexpected error during branch reorder: ${message}`);
 				
 				// Restore pending state on unexpected error
-				this.pendingReorder = { branchName, oldIndex, newIndex };
+				this.pendingReorder = { branchName: pendingBranch, oldIndex, newIndex };
 				this.pushState();
 			}
 		});
@@ -309,23 +313,24 @@ export class StackViewProvider implements vscode.WebviewViewProvider {
 	 */
 	private async handleCancelReorder(branchName: string): Promise<void> {
 		// Validate input
-		if (typeof branchName !== 'string' || branchName.trim() === '') {
+		const trimmed = typeof branchName === 'string' ? branchName.trim() : '';
+		if (trimmed.length === 0) {
 			console.error('❌ Invalid branch name provided to handleCancelReorder:', branchName);
 			return;
 		}
 
 		// Validate pending reorder state
 		if (!this.pendingReorder) {
-			console.warn('⚠️ No pending reorder found when canceling reorder for:', branchName);
+			console.warn('⚠️ No pending reorder found when canceling reorder for:', trimmed);
 			return;
 		}
 
-		if (this.pendingReorder.branchName !== branchName) {
-			console.error('❌ Branch name mismatch in pending reorder. Expected:', branchName, 'but found:', this.pendingReorder.branchName);
+		if (this.pendingReorder.branchName !== trimmed) {
+			console.error('❌ Branch name mismatch in pending reorder. Expected:', trimmed, 'but found:', this.pendingReorder.branchName);
 			return;
 		}
 
-		console.log('🔄 Canceling reorder for:', branchName);
+		console.log('🔄 Canceling reorder for:', trimmed);
 		
 		// Clear pending reorder state and refresh to restore original order
 		this.pendingReorder = null;
@@ -340,7 +345,7 @@ export class StackViewProvider implements vscode.WebviewViewProvider {
 	 */
 	public async handleBranchCommand(commandName: string, branchName: string): Promise<void> {
 		// Map command names to their exec functions
-		const commandMap: Record<string, (folder: vscode.WorkspaceFolder, branchName: string) => Promise<any>> = {
+		const commandMap: Record<string, (folder: vscode.WorkspaceFolder, branchName: string) => Promise<BranchCommandResult>> = {
 			untrack: execBranchUntrack,
 			checkout: execBranchCheckout,
 			fold: execBranchFold,
@@ -366,10 +371,11 @@ export class StackViewProvider implements vscode.WebviewViewProvider {
 	private async handleBranchCommandInternal(
 		commandName: string,
 		branchName: string,
-		execFunction: (folder: vscode.WorkspaceFolder, branchName: string) => Promise<{ value: void } | { error: string }>
+		execFunction: (folder: vscode.WorkspaceFolder, branchName: string) => Promise<BranchCommandResult>,
 	): Promise<void> {
 		// Validate input
-		if (typeof branchName !== 'string' || branchName.trim() === '') {
+		const trimmedName = typeof branchName === 'string' ? branchName.trim() : '';
+		if (trimmedName.length === 0) {
 			console.error(`❌ Invalid branch name provided to handleBranchCommand (${commandName}):`, branchName);
 			void vscode.window.showErrorMessage(`Invalid branch name provided for ${commandName}.`);
 			return;
@@ -382,24 +388,24 @@ export class StackViewProvider implements vscode.WebviewViewProvider {
 			return;
 		}
 
-		console.log(`🔄 Executing branch ${commandName} for:`, branchName);
+		console.log(`🔄 Executing branch ${commandName} for:`, trimmedName);
 
 		// Show progress notification
 		await vscode.window.withProgress({
 			location: vscode.ProgressLocation.Notification,
-			title: `${commandName.charAt(0).toUpperCase() + commandName.slice(1)}ing branch: ${branchName}`,
+			title: `${commandName.charAt(0).toUpperCase() + commandName.slice(1)}ing branch: ${trimmedName}`,
 			cancellable: false,
 		}, async (progress) => {
 			try {
 				// Execute the branch command
-				const result = await execFunction(this.workspaceFolder!, branchName);
+				const result = await execFunction(this.workspaceFolder!, trimmedName);
 
 				if ('error' in result) {
 					console.error(`🔄 Branch ${commandName} failed:`, result.error);
 					void vscode.window.showErrorMessage(`Failed to ${commandName} branch: ${result.error}`);
 				} else {
 					console.log(`🔄 Branch ${commandName} successful`);
-					void vscode.window.showInformationMessage(`Branch ${branchName} ${commandName}ed successfully.`);
+					void vscode.window.showInformationMessage(`Branch ${trimmedName} ${commandName}ed successfully.`);
 				}
 
 				// Always refresh state to reflect current git-spice state

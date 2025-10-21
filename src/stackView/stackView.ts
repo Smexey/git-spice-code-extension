@@ -32,7 +32,7 @@
  *    - New state fields: extend updateState() and render functions
  */
 
-import type { BranchViewModel, DisplayState } from './types';
+import type { BranchViewModel, DisplayState, BranchReorderInfo } from './types';
 import type { WebviewMessage, ExtensionMessage } from './webviewTypes';
 import Sortable from 'sortablejs';
 
@@ -433,7 +433,7 @@ class StackView {
 	 * 
 	 * @param pendingReorder - The pending reorder operation details, or undefined to clear buttons
 	 */
-	private updatePendingReorder(pendingReorder?: { branchName: string; oldIndex: number; newIndex: number }): void {
+	private updatePendingReorder(pendingReorder?: BranchReorderInfo): void {
 		// Validate stackList element exists
 		if (!this.stackList) {
 			console.error('❌ StackList element not found');
