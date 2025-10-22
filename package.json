@@ -3,6 +3,7 @@
   "displayName": "git-spice",
   "description": "git-spice",
   "version": "0.0.1",
+  "publisher": "Smexey",
   "repository": {
     "type": "git",
     "url": "https://github.com/Smexey/git-spice-code-extension.git"
@@ -17,7 +18,8 @@
   "main": "./dist/extension.js",
   "files": [
     "dist",
-    "media"
+    "media",
+    "LICENSE"
   ],
   "contributes": {
     "commands": [
