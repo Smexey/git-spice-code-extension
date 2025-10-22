@@ -51,10 +51,7 @@ async function runGitSpiceCommand(
 		return { error: `${context}: Workspace folder path is unavailable.` };
 	}
 	try {
-		const { stderr } = await execFileAsync(GIT_SPICE_BINARY, args, { cwd, timeout });
-		if (stderr && stderr.trim()) {
-			return { error: `git-spice error: ${stderr.trim()}` };
-		}
+		await execFileAsync(GIT_SPICE_BINARY, args, { cwd, timeout });
 		return { value: undefined };
 	} catch (error) {
 		return { error: `${context}: ${toErrorMessage(error)}` };
@@ -293,7 +290,7 @@ export async function execBranchSquash(folder: vscode.WorkspaceFolder, branchNam
 	if ('error' in normalized) {
 		return { error: `Branch squash: ${normalized.error}` };
 	}
-	return runGitSpiceCommand(folder, ['branch', 'squash', normalized.value], 'Branch squash');
+	return runGitSpiceCommand(folder, ['branch', 'squash', '--branch', normalized.value, '--no-edit'], 'Branch squash');
 }
 
 export async function execBranchEdit(folder: vscode.WorkspaceFolder, branchName: string): Promise<BranchCommandResult> {
@@ -329,7 +326,7 @@ export async function execBranchRestack(folder: vscode.WorkspaceFolder, branchNa
 	if ('error' in normalized) {
 		return { error: `Branch restack: ${normalized.error}` };
 	}
-	return runGitSpiceCommand(folder, ['branch', 'restack', normalized.value], 'Branch restack');
+	return runGitSpiceCommand(folder, ['branch', 'restack', '--branch', normalized.value], 'Branch restack');
 }
 
 export async function execBranchSubmit(folder: vscode.WorkspaceFolder, branchName: string): Promise<BranchCommandResult> {
