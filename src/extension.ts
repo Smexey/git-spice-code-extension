@@ -3,7 +3,7 @@
 import * as vscode from 'vscode';
 
 import { StackViewProvider } from './stackView/StackViewProvider';
-import { execBranchCreate } from './utils/gitSpice';
+import { execBranchCreate, execUp, execDown, execTrunk, execStackRestack, execStackSubmit } from './utils/gitSpice';
 
 export function activate(context: vscode.ExtensionContext): void {
 	const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
@@ -65,6 +65,93 @@ export function activate(context: vscode.ExtensionContext): void {
 					void provider.refresh();
 				}, 100);
 			}
+		}),
+		vscode.commands.registerCommand('git-spice.up', async () => {
+			const folder = vscode.workspace.workspaceFolders?.[0];
+			if (!folder) {
+				void vscode.window.showErrorMessage('No workspace folder found');
+				return;
+			}
+
+			const result = await execUp(folder);
+			if ('error' in result) {
+				void vscode.window.showErrorMessage(`Failed to navigate up: ${result.error}`);
+			} else {
+				void vscode.window.showInformationMessage('Navigated up the stack');
+			}
+			void provider.refresh();
+		}),
+		vscode.commands.registerCommand('git-spice.down', async () => {
+			const folder = vscode.workspace.workspaceFolders?.[0];
+			if (!folder) {
+				void vscode.window.showErrorMessage('No workspace folder found');
+				return;
+			}
+
+			const result = await execDown(folder);
+			if ('error' in result) {
+				void vscode.window.showErrorMessage(`Failed to navigate down: ${result.error}`);
+			} else {
+				void vscode.window.showInformationMessage('Navigated down the stack');
+			}
+			void provider.refresh();
+		}),
+		vscode.commands.registerCommand('git-spice.trunk', async () => {
+			const folder = vscode.workspace.workspaceFolders?.[0];
+			if (!folder) {
+				void vscode.window.showErrorMessage('No workspace folder found');
+				return;
+			}
+
+			const result = await execTrunk(folder);
+			if ('error' in result) {
+				void vscode.window.showErrorMessage(`Failed to navigate to trunk: ${result.error}`);
+			} else {
+				void vscode.window.showInformationMessage('Navigated to trunk');
+			}
+			void provider.refresh();
+		}),
+		vscode.commands.registerCommand('git-spice.stackRestack', async () => {
+			const folder = vscode.workspace.workspaceFolders?.[0];
+			if (!folder) {
+				void vscode.window.showErrorMessage('No workspace folder found');
+				return;
+			}
+
+			await vscode.window.withProgress({
+				location: vscode.ProgressLocation.Notification,
+				title: 'Restacking current stack...',
+				cancellable: false,
+			}, async () => {
+				const result = await execStackRestack(folder);
+				if ('error' in result) {
+					void vscode.window.showErrorMessage(`Failed to restack stack: ${result.error}`);
+				} else {
+					void vscode.window.showInformationMessage('Stack restacked successfully');
+				}
+				await provider.refresh();
+			});
+		}),
+		vscode.commands.registerCommand('git-spice.stackSubmit', async () => {
+			const folder = vscode.workspace.workspaceFolders?.[0];
+			if (!folder) {
+				void vscode.window.showErrorMessage('No workspace folder found');
+				return;
+			}
+
+			await vscode.window.withProgress({
+				location: vscode.ProgressLocation.Notification,
+				title: 'Submitting current stack...',
+				cancellable: false,
+			}, async () => {
+				const result = await execStackSubmit(folder);
+				if ('error' in result) {
+					void vscode.window.showErrorMessage(`Failed to submit stack: ${result.error}`);
+				} else {
+					void vscode.window.showInformationMessage('Stack submitted successfully');
+				}
+				await provider.refresh();
+			});
 		}),
 		vscode.workspace.onDidChangeWorkspaceFolders(() => {
 			provider.setWorkspaceFolder(vscode.workspace.workspaceFolders?.[0]);

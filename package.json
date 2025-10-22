@@ -25,6 +25,26 @@
       {
         "command": "git-spice.branchCreateFromCommitMessage",
         "title": "Git Spice: Create Branch from Commit Message"
+      },
+      {
+        "command": "git-spice.up",
+        "title": "Git Spice: Navigate Up Stack"
+      },
+      {
+        "command": "git-spice.down",
+        "title": "Git Spice: Navigate Down Stack"
+      },
+      {
+        "command": "git-spice.trunk",
+        "title": "Git Spice: Navigate to Trunk"
+      },
+      {
+        "command": "git-spice.stackRestack",
+        "title": "Git Spice: Restack Current Stack"
+      },
+      {
+        "command": "git-spice.stackSubmit",
+        "title": "Git Spice: Submit Current Stack"
       }
     ],
     "keybindings": [

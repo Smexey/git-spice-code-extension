@@ -383,7 +383,31 @@ export async function execBranchSplit(folder: vscode.WorkspaceFolder, branchName
 }
 
 /**
- * Executes `gs repo sync --no-restack` with interactive prompts for branch deletion.
+ * Navigation commands - simple wrappers around git-spice navigation
+ */
+
+export async function execUp(folder: vscode.WorkspaceFolder): Promise<BranchCommandResult> {
+	return runGitSpiceCommand(folder, ['up'], 'Navigate up');
+}
+
+export async function execDown(folder: vscode.WorkspaceFolder): Promise<BranchCommandResult> {
+	return runGitSpiceCommand(folder, ['down'], 'Navigate down');
+}
+
+export async function execTrunk(folder: vscode.WorkspaceFolder): Promise<BranchCommandResult> {
+	return runGitSpiceCommand(folder, ['trunk'], 'Navigate to trunk');
+}
+
+export async function execStackRestack(folder: vscode.WorkspaceFolder): Promise<BranchCommandResult> {
+	return runGitSpiceCommand(folder, ['stack', 'restack'], 'Stack restack');
+}
+
+export async function execStackSubmit(folder: vscode.WorkspaceFolder): Promise<BranchCommandResult> {
+	return runGitSpiceCommand(folder, ['stack', 'submit', '--fill', '--no-draft'], 'Stack submit');
+}
+
+/**
+ * Executes `gs repo sync` with interactive prompts for branch deletion.
  * When git-spice prompts to delete branches (due to closed PRs), shows VSCode prompts
  * to the user and handles their responses.
  *
@@ -406,7 +430,7 @@ export async function execRepoSync(
 		let errorBuffer = '';
 
 		// Spawn the process with stdio access
-		const process = spawn(GIT_SPICE_BINARY, ['repo', 'sync', '--no-restack'], {
+		const process = spawn(GIT_SPICE_BINARY, ['repo', 'sync'], {
 			cwd,
 			stdio: ['pipe', 'pipe', 'pipe'],
 		});
