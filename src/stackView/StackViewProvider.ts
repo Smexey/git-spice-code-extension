@@ -14,6 +14,8 @@ import {
 	execBranchRename,
 	execBranchRestack,
 	execBranchSubmit,
+	execCommitFixup,
+	execBranchSplit,
 	type BranchCommandResult,
 } from '../utils/gitSpice';
 import { readMediaFile, readDistFile } from '../utils/readFileSync';
@@ -127,6 +129,21 @@ export class StackViewProvider implements vscode.WebviewViewProvider {
 				case 'branchSubmit':
 					if (typeof message.branchName === 'string') {
 						void this.handleBranchCommandInternal('submit', message.branchName, execBranchSubmit);
+					}
+					return;
+				case 'commitCopySha':
+					if (typeof message.sha === 'string') {
+						void this.handleCommitCopySha(message.sha);
+					}
+					return;
+				case 'commitFixup':
+					if (typeof message.sha === 'string') {
+						void this.handleCommitFixup(message.sha);
+					}
+					return;
+				case 'commitSplit':
+					if (typeof message.sha === 'string' && typeof message.branchName === 'string') {
+						void this.handleCommitSplit(message.sha, message.branchName);
 					}
 					return;
 				default:
@@ -622,6 +639,148 @@ export class StackViewProvider implements vscode.WebviewViewProvider {
 				const message = error instanceof Error ? error.message : String(error);
 				console.error('🔄 Unexpected error during branch rename:', message);
 				void vscode.window.showErrorMessage(`Unexpected error during branch rename: ${message}`);
+			}
+		});
+	}
+
+	/**
+	 * Handles copying a commit SHA to the clipboard
+	 */
+	private async handleCommitCopySha(sha: string): Promise<void> {
+		// Validate input
+		if (typeof sha !== 'string' || sha.trim() === '') {
+			console.error('❌ Invalid SHA provided to handleCommitCopySha:', sha);
+			void vscode.window.showErrorMessage('Invalid commit SHA provided.');
+			return;
+		}
+
+		try {
+			await vscode.env.clipboard.writeText(sha);
+			void vscode.window.showInformationMessage(`Copied commit SHA: ${sha.substring(0, 8)}`);
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			console.error('❌ Error copying SHA to clipboard:', message);
+			void vscode.window.showErrorMessage(`Failed to copy SHA: ${message}`);
+		}
+	}
+
+	/**
+	 * Handles creating a fixup commit for the specified commit
+	 */
+	private async handleCommitFixup(sha: string): Promise<void> {
+		// Validate input
+		if (typeof sha !== 'string' || sha.trim() === '') {
+			console.error('❌ Invalid SHA provided to handleCommitFixup:', sha);
+			void vscode.window.showErrorMessage('Invalid commit SHA provided.');
+			return;
+		}
+
+		// Validate workspace folder
+		if (!this.workspaceFolder) {
+			console.error('❌ No workspace folder available for commit fixup');
+			void vscode.window.showErrorMessage('No workspace folder available.');
+			return;
+		}
+
+		console.log('🔄 Executing commit fixup for:', sha);
+
+		// Show progress notification
+		await vscode.window.withProgress({
+			location: vscode.ProgressLocation.Notification,
+			title: `Creating fixup commit for ${sha.substring(0, 8)}`,
+			cancellable: false,
+		}, async (progress) => {
+			try {
+				const result = await execCommitFixup(this.workspaceFolder!, sha);
+
+				if ('error' in result) {
+					console.error('🔄 Commit fixup failed:', result.error);
+					void vscode.window.showErrorMessage(`Failed to create fixup commit: ${result.error}`);
+				} else {
+					console.log('🔄 Commit fixup successful');
+					void vscode.window.showInformationMessage(`Fixup commit created for ${sha.substring(0, 8)}`);
+				}
+
+				// Refresh state to reflect changes
+				await this.refresh();
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				console.error('🔄 Unexpected error during commit fixup:', message);
+				void vscode.window.showErrorMessage(`Unexpected error during commit fixup: ${message}`);
+			}
+		});
+	}
+
+	/**
+	 * Handles splitting a branch at the specified commit
+	 */
+	private async handleCommitSplit(sha: string, branchName: string): Promise<void> {
+		// Validate input
+		if (typeof sha !== 'string' || sha.trim() === '') {
+			console.error('❌ Invalid SHA provided to handleCommitSplit:', sha);
+			void vscode.window.showErrorMessage('Invalid commit SHA provided.');
+			return;
+		}
+
+		if (typeof branchName !== 'string' || branchName.trim() === '') {
+			console.error('❌ Invalid branch name provided to handleCommitSplit:', branchName);
+			void vscode.window.showErrorMessage('Invalid branch name provided.');
+			return;
+		}
+
+		// Validate workspace folder
+		if (!this.workspaceFolder) {
+			console.error('❌ No workspace folder available for branch split');
+			void vscode.window.showErrorMessage('No workspace folder available.');
+			return;
+		}
+
+		// Prompt for new branch name
+		const newBranchName = await vscode.window.showInputBox({
+			prompt: `Enter name for the new branch that will be created at commit ${sha.substring(0, 8)}`,
+			placeHolder: 'new-branch-name',
+			validateInput: (input) => {
+				if (!input || !input.trim()) {
+					return 'Branch name cannot be empty.';
+				}
+				// Basic validation for git branch names
+				if (!/^[a-zA-Z0-9/_-]+$/.test(input.trim())) {
+					return 'Branch name contains invalid characters.';
+				}
+				return null;
+			}
+		});
+
+		if (!newBranchName || !newBranchName.trim()) {
+			// User cancelled
+			return;
+		}
+
+		console.log('🔄 Executing branch split for:', branchName, 'at:', sha, 'new branch:', newBranchName);
+
+		// Show progress notification
+		await vscode.window.withProgress({
+			location: vscode.ProgressLocation.Notification,
+			title: `Splitting branch ${branchName} at ${sha.substring(0, 8)}`,
+			cancellable: false,
+		}, async (progress) => {
+			try {
+				const result = await execBranchSplit(this.workspaceFolder!, branchName, sha, newBranchName.trim());
+
+				if ('error' in result) {
+					console.error('🔄 Branch split failed:', result.error);
+					void vscode.window.showErrorMessage(`Failed to split branch: ${result.error}`);
+				} else {
+					console.log('🔄 Branch split successful');
+					void vscode.window.showInformationMessage(`Branch ${branchName} split at ${sha.substring(0, 8)} → ${newBranchName}`);
+				}
+
+				// Refresh state to reflect changes
+				await this.refresh();
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				console.error('🔄 Unexpected error during branch split:', message);
+				void vscode.window.showErrorMessage(`Unexpected error during branch split: ${message}`);
 			}
 		});
 	}

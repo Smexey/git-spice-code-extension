@@ -63,6 +63,8 @@ class StackView {
 	private sortableInstance: Sortable | null = null;
 	private contextMenu: HTMLElement | null = null;
 	private currentContextBranch: string | null = null;
+	private commitContextMenu: HTMLElement | null = null;
+	private currentContextCommit: { sha: string; branchName: string } | null = null;
 
 	private static readonly COMMIT_CHUNK = 10;
 	private static readonly ANIMATION_DURATION = 200;
@@ -75,6 +77,7 @@ class StackView {
 
 		this.setupEventListeners();
 		this.createContextMenu();
+		this.createCommitContextMenu();
 		this.vscode.postMessage({ type: 'ready' });
 	}
 
@@ -89,14 +92,18 @@ class StackView {
 			}
 		});
 
-		// Hide context menu when clicking elsewhere
+		// Hide context menus when clicking elsewhere
 		document.addEventListener('click', () => {
 			this.hideContextMenu();
+			this.hideCommitContextMenu();
 		});
 
-		// Prevent context menu from closing when clicking inside it
+		// Prevent context menus from closing when clicking inside them
 		document.addEventListener('click', (event) => {
 			if (this.contextMenu && this.contextMenu.contains(event.target as Node)) {
+				event.stopPropagation();
+			}
+			if (this.commitContextMenu && this.commitContextMenu.contains(event.target as Node)) {
 				event.stopPropagation();
 			}
 		});
@@ -137,6 +144,35 @@ class StackView {
 				this.hideContextMenu();
 			});
 			this.contextMenu!.appendChild(menuItem);
+		});
+	}
+
+	private createCommitContextMenu(): void {
+		this.commitContextMenu = document.createElement('div');
+		this.commitContextMenu.className = 'context-menu';
+		this.commitContextMenu.style.display = 'none';
+		document.body.appendChild(this.commitContextMenu);
+
+		// Create menu items for commit actions
+		const menuItems = [
+			{ label: 'Copy SHA', action: 'commitCopySha', icon: 'codicon-copy' },
+			// { label: 'Fixup', action: 'commitFixup', icon: 'codicon-edit' }, // Experimental feature - disabled for now
+			{ label: 'Split Branch', action: 'commitSplit', icon: 'codicon-split-horizontal' },
+		];
+
+		menuItems.forEach(item => {
+			const menuItem = document.createElement('div');
+			menuItem.className = 'context-menu-item';
+			menuItem.dataset.action = item.action;
+			menuItem.innerHTML = `
+				<i class="codicon ${item.icon}"></i>
+				<span>${item.label}</span>
+			`;
+			menuItem.addEventListener('click', () => {
+				this.executeCommitAction(item.action);
+				this.hideCommitContextMenu();
+			});
+			this.commitContextMenu!.appendChild(menuItem);
 		});
 	}
 
@@ -233,6 +269,42 @@ class StackView {
 			type: action as any,
 			branchName: this.currentContextBranch
 		});
+	}
+
+	private showCommitContextMenu(event: MouseEvent, sha: string, branchName: string): void {
+		if (!this.commitContextMenu) return;
+
+		event.preventDefault();
+		event.stopPropagation();
+
+		this.currentContextCommit = { sha, branchName };
+
+		// Position the context menu
+		this.commitContextMenu.style.left = `${event.clientX}px`;
+		this.commitContextMenu.style.top = `${event.clientY}px`;
+		this.commitContextMenu.style.display = 'block';
+	}
+
+	private hideCommitContextMenu(): void {
+		if (this.commitContextMenu) {
+			this.commitContextMenu.style.display = 'none';
+			this.currentContextCommit = null;
+		}
+	}
+
+	private executeCommitAction(action: string): void {
+		if (!this.currentContextCommit) return;
+
+		const { sha, branchName } = this.currentContextCommit;
+
+		if (action === 'commitCopySha') {
+			// Copy SHA to clipboard
+			this.vscode.postMessage({ type: 'commitCopySha', sha });
+		} else if (action === 'commitFixup') {
+			this.vscode.postMessage({ type: 'commitFixup', sha });
+		} else if (action === 'commitSplit') {
+			this.vscode.postMessage({ type: 'commitSplit', sha, branchName });
+		}
 	}
 
 	private updateState(newState: DisplayState): void {
@@ -744,12 +816,12 @@ class StackView {
 
 		// Store initial visible count
 		const initialCount = Math.min(branch.commits!.length, StackView.COMMIT_CHUNK);
-		this.renderCommitsIntoContainer(container, branch.commits!, initialCount);
+		this.renderCommitsIntoContainer(container, branch.commits!, initialCount, branch.name);
 
 		return container;
 	}
 
-	private renderCommitsIntoContainer(container: HTMLElement, commits: BranchViewModel['commits'], visibleCount: number): void {
+	private renderCommitsIntoContainer(container: HTMLElement, commits: BranchViewModel['commits'], visibleCount: number, branchName: string): void {
 		if (!commits) return;
 
 		const newCommits = commits.slice(0, visibleCount);
@@ -764,7 +836,7 @@ class StackView {
 				const wrapper = document.createElement('div');
 				wrapper.className = 'commit-wrapper';
 				wrapper.dataset.key = c.sha;
-				const row = this.renderCommitItem(c);
+				const row = this.renderCommitItem(c, branchName);
 				wrapper.appendChild(row);
 				return wrapper;
 			},
@@ -780,7 +852,7 @@ class StackView {
 				);
 			},
 			update: (el, c) => {
-				const newRow = this.renderCommitItem(c);
+				const newRow = this.renderCommitItem(c, branchName);
 				const oldRow = el.querySelector('.commit-item');
 				if (oldRow) {
 					// Check what specifically changed and flash only that part
@@ -817,13 +889,13 @@ class StackView {
 				: `Show remaining ${remaining}`;
 			more.addEventListener('click', (event: Event) => {
 				event.stopPropagation();
-				this.renderCommitsIntoContainer(container, commits, visibleCount + StackView.COMMIT_CHUNK);
+				this.renderCommitsIntoContainer(container, commits, visibleCount + StackView.COMMIT_CHUNK, branchName);
 			});
 			container.appendChild(more);
 		}
 	}
 
-	private renderCommitItem(commit: NonNullable<BranchViewModel['commits']>[0]): HTMLElement {
+	private renderCommitItem(commit: NonNullable<BranchViewModel['commits']>[0], branchName?: string): HTMLElement {
 		const row = document.createElement('button');
 		row.type = 'button';
 		row.className = 'commit-item';
@@ -835,6 +907,13 @@ class StackView {
 				return;
 			}
 			this.vscode.postMessage({ type: 'openCommitDiff', sha: commit.sha });
+		});
+
+		// Add right-click context menu for commits
+		row.addEventListener('contextmenu', (event: MouseEvent) => {
+			if (branchName) {
+				this.showCommitContextMenu(event, commit.sha, branchName);
+			}
 		});
 
 		const subject = document.createElement('span');

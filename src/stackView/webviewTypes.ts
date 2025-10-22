@@ -19,7 +19,10 @@ export type WebviewMessage =
 	| { type: 'branchRenamePrompt'; branchName: string }
 	| { type: 'branchRename'; branchName: string; newName: string }
 	| { type: 'branchRestack'; branchName: string }
-	| { type: 'branchSubmit'; branchName: string };
+	| { type: 'branchSubmit'; branchName: string }
+	| { type: 'commitCopySha'; sha: string }
+	| { type: 'commitFixup'; sha: string }
+	| { type: 'commitSplit'; sha: string; branchName: string };
 
 // Messages from extension to webview
 export type ExtensionMessage =

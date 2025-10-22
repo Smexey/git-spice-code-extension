@@ -352,3 +352,34 @@ export async function execBranchCreate(folder: vscode.WorkspaceFolder, message: 
 		BRANCH_CREATE_TIMEOUT_MS,
 	);
 }
+
+export async function execCommitFixup(folder: vscode.WorkspaceFolder, sha: string): Promise<BranchCommandResult> {
+	const normalized = normalizeNonEmpty(sha, 'Commit SHA');
+	if ('error' in normalized) {
+		return { error: `Commit fixup: ${normalized.error}` };
+	}
+	return runGitSpiceCommand(folder, ['commit', 'fixup', normalized.value], 'Commit fixup');
+}
+
+export async function execBranchSplit(folder: vscode.WorkspaceFolder, branchName: string, sha: string, newBranchName: string): Promise<BranchCommandResult> {
+	const normalizedBranch = normalizeNonEmpty(branchName, 'Branch name');
+	if ('error' in normalizedBranch) {
+		return { error: `Branch split: ${normalizedBranch.error}` };
+	}
+	const normalizedSha = normalizeNonEmpty(sha, 'Commit SHA');
+	if ('error' in normalizedSha) {
+		return { error: `Branch split: ${normalizedSha.error}` };
+	}
+	const normalizedNewBranch = normalizeNonEmpty(newBranchName, 'New branch name');
+	if ('error' in normalizedNewBranch) {
+		return { error: `Branch split: ${normalizedNewBranch.error}` };
+	}
+	// Format: --at COMMIT:NAME as required by git-spice
+	// Use COMMIT^ to split before the selected commit, so the commit is included in the new branch
+	const atValue = `${normalizedSha.value}^:${normalizedNewBranch.value}`;
+	return runGitSpiceCommand(
+		folder,
+		['branch', 'split', '--branch', normalizedBranch.value, '--at', atValue],
+		'Branch split',
+	);
+}
