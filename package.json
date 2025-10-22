@@ -18,9 +18,9 @@
   "contributes": {
     "commands": [
       {
-        "command": "git-spice.refreshBranches",
-        "title": "Refresh",
-        "icon": "$(refresh)"
+        "command": "git-spice.syncRepo",
+        "title": "Sync Repository",
+        "icon": "$(sync)"
       },
       {
         "command": "git-spice.branchCreateFromCommitMessage",
@@ -49,7 +49,7 @@
     "menus": {
       "view/title": [
         {
-          "command": "git-spice.refreshBranches",
+          "command": "git-spice.syncRepo",
           "when": "view == gitSpice.branches",
           "group": "navigation@1"
         }

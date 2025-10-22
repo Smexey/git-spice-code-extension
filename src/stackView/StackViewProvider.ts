@@ -16,6 +16,7 @@ import {
 	execBranchSubmit,
 	execCommitFixup,
 	execBranchSplit,
+	execRepoSync,
 	type BranchCommandResult,
 } from '../utils/gitSpice';
 import { readMediaFile, readDistFile } from '../utils/readFileSync';
@@ -179,6 +180,61 @@ export class StackViewProvider implements vscode.WebviewViewProvider {
 		}
 
 		this.pushState();
+	}
+
+	async sync(): Promise<void> {
+		if (!this.workspaceFolder) {
+			void vscode.window.showErrorMessage('No workspace folder available.');
+			return;
+		}
+
+		await vscode.window.withProgress({
+			location: vscode.ProgressLocation.Notification,
+			title: 'Syncing repository with remote...',
+			cancellable: false,
+		}, async (progress) => {
+			try {
+				// Execute repo sync with interactive prompt callback
+				const result = await execRepoSync(
+					this.workspaceFolder!,
+					async (branchName: string) => {
+						// Show VSCode confirmation dialog for each branch deletion
+						const answer = await vscode.window.showWarningMessage(
+							`Branch '${branchName}' has a closed pull request. Delete this branch?`,
+							{ modal: true },
+							'Yes',
+							'No',
+						);
+						return answer === 'Yes';
+					}
+				);
+
+				if ('error' in result) {
+					console.error('🔄 Repository sync failed:', result.error);
+					void vscode.window.showErrorMessage(`Failed to sync repository: ${result.error}`);
+				} else {
+					const { deletedBranches, syncedBranches } = result.value;
+					let message = `Repository synced successfully.`;
+					
+					if (syncedBranches > 0) {
+						message += ` ${syncedBranches} branch${syncedBranches === 1 ? '' : 'es'} updated.`;
+					}
+					
+					if (deletedBranches.length > 0) {
+						message += ` Deleted ${deletedBranches.length} branch${deletedBranches.length === 1 ? '' : 'es'}: ${deletedBranches.join(', ')}.`;
+					}
+					
+					void vscode.window.showInformationMessage(message);
+				}
+
+				// Always refresh to reflect current state
+				await this.refresh();
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				console.error('🔄 Unexpected error during repository sync:', message);
+				void vscode.window.showErrorMessage(`Unexpected error during repository sync: ${message}`);
+			}
+		});
 	}
 
 	private pushState(): void {

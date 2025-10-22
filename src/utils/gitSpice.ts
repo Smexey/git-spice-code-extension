@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import * as vscode from 'vscode';
 import * as fs from 'node:fs';
@@ -19,6 +19,7 @@ export type BranchLoadResult = { value: GitSpiceBranch[] } | { error: string };
 export type StackEditResult = { value: void } | { error: string };
 export type BranchCommandResult = { value: void } | { error: string };
 export type BranchReorderInfo = Readonly<{ oldIndex: number; newIndex: number; branchName: string }>;
+export type RepoSyncResult = { value: { deletedBranches: string[]; syncedBranches: number } } | { error: string };
 
 function toErrorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
@@ -379,4 +380,110 @@ export async function execBranchSplit(folder: vscode.WorkspaceFolder, branchName
 		['branch', 'split', '--branch', normalizedBranch.value, '--at', atValue],
 		'Branch split',
 	);
+}
+
+/**
+ * Executes `gs repo sync --no-restack` with interactive prompts for branch deletion.
+ * When git-spice prompts to delete branches (due to closed PRs), shows VSCode prompts
+ * to the user and handles their responses.
+ *
+ * @param folder - The workspace folder where the command should be executed
+ * @param promptCallback - Async callback to prompt the user for confirmation
+ * @returns A promise that resolves with sync results or an error
+ */
+export async function execRepoSync(
+	folder: vscode.WorkspaceFolder,
+	promptCallback: (branchName: string) => Promise<boolean>,
+): Promise<RepoSyncResult> {
+	const cwd = getWorkspaceFolderPath(folder);
+	if (!cwd) {
+		return { error: 'Invalid workspace folder provided' };
+	}
+
+	return new Promise<RepoSyncResult>((resolve) => {
+		const deletedBranches: string[] = [];
+		let outputBuffer = '';
+		let errorBuffer = '';
+
+		// Spawn the process with stdio access
+		const process = spawn(GIT_SPICE_BINARY, ['repo', 'sync', '--no-restack'], {
+			cwd,
+			stdio: ['pipe', 'pipe', 'pipe'],
+		});
+
+		let isResolved = false;
+		const resolveOnce = (result: RepoSyncResult): void => {
+			if (!isResolved) {
+				isResolved = true;
+				resolve(result);
+			}
+		};
+
+		// Set timeout
+		const timeout = setTimeout(() => {
+			process.kill();
+			resolveOnce({ error: 'Repository sync timed out after 30 seconds' });
+		}, DEFAULT_TIMEOUT_MS);
+
+		// Handle stdout data
+		process.stdout.on('data', (data: Buffer) => {
+			const text = data.toString();
+			outputBuffer += text;
+
+			// Look for branch deletion prompts in the output
+			// git-spice typically outputs: "Delete branch 'branch-name'? [y/N]"
+			const promptMatch = text.match(/Delete branch '([^']+)'\? \[y\/N\]/i);
+			if (promptMatch) {
+				const branchName = promptMatch[1];
+				
+				// Asynchronously prompt the user and send response
+				void (async () => {
+					try {
+						const shouldDelete = await promptCallback(branchName);
+						const response = shouldDelete ? 'y\n' : 'n\n';
+						process.stdin.write(response);
+						
+						if (shouldDelete) {
+							deletedBranches.push(branchName);
+						}
+					} catch (error) {
+						// If user cancels or there's an error, default to 'n'
+						process.stdin.write('n\n');
+					}
+				})();
+			}
+		});
+
+		// Handle stderr data
+		process.stderr.on('data', (data: Buffer) => {
+			errorBuffer += data.toString();
+		});
+
+		// Handle process exit
+		process.on('close', (code) => {
+			clearTimeout(timeout);
+			
+			if (code === 0) {
+				// Success - parse output to count synced branches
+				const syncedBranchesMatch = outputBuffer.match(/(\d+) branch(?:es)? synced/i);
+				const syncedBranches = syncedBranchesMatch ? Number.parseInt(syncedBranchesMatch[1], 10) : 0;
+				
+				resolveOnce({
+					value: {
+						deletedBranches,
+						syncedBranches,
+					},
+				});
+			} else {
+				const errorMessage = errorBuffer.trim() || outputBuffer.trim() || `Process exited with code ${code}`;
+				resolveOnce({ error: `Repository sync failed: ${errorMessage}` });
+			}
+		});
+
+		// Handle process errors
+		process.on('error', (error) => {
+			clearTimeout(timeout);
+			resolveOnce({ error: `Failed to execute gs repo sync: ${toErrorMessage(error)}` });
+		});
+	});
 }

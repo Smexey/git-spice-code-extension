@@ -14,7 +14,7 @@ export function activate(context: vscode.ExtensionContext): void {
 		vscode.window.registerWebviewViewProvider('gitSpice.branches', provider, {
 			webviewOptions: { retainContextWhenHidden: true }
 		}),
-		vscode.commands.registerCommand('git-spice.refreshBranches', () => provider.refresh()),
+		vscode.commands.registerCommand('git-spice.syncRepo', () => provider.sync()),
 		vscode.commands.registerCommand('git-spice.branchCreateFromCommitMessage', async () => {
 			const gitExtension = vscode.extensions.getExtension('vscode.git')?.exports;
 			if (!gitExtension) {
