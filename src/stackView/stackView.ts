@@ -182,6 +182,9 @@ class StackView {
 		event.preventDefault();
 		event.stopPropagation();
 
+		// Close commit context menu if open
+		this.hideCommitContextMenu();
+
 		this.currentContextBranch = branchName;
 
 		// Update menu items based on current branch
@@ -276,6 +279,9 @@ class StackView {
 
 		event.preventDefault();
 		event.stopPropagation();
+
+		// Close branch context menu if open
+		this.hideContextMenu();
 
 		this.currentContextCommit = { sha, branchName };
 
