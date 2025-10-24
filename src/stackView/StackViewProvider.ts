@@ -39,7 +39,7 @@ export class StackViewProvider implements vscode.WebviewViewProvider {
 			localResourceRoots: [
 				vscode.Uri.joinPath(this.extensionUri, 'media'),
 				vscode.Uri.joinPath(this.extensionUri, 'dist'),
-				vscode.Uri.joinPath(this.extensionUri, 'node_modules', '@vscode', 'codicons', 'dist'),
+				vscode.Uri.joinPath(this.extensionUri, 'dist', 'codicons'),
 			],
 		};
 		webviewView.webview.html = await this.renderHtml(webviewView.webview);
@@ -883,9 +883,7 @@ export class StackViewProvider implements vscode.WebviewViewProvider {
 
 		const mediaUri = (name: string) => webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'media', name)).toString();
 		const distUri = (name: string) => webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'dist', name)).toString();
-		const codiconStyleUri = webview.asWebviewUri(
-			vscode.Uri.joinPath(this.extensionUri, 'node_modules', '@vscode', 'codicons', 'dist', 'codicon.css')
-		).toString();
+		const codiconStyleUri = distUri('codicons/codicon.css');
 		const template = await readMediaFile(this.extensionUri, 'stackView.html');
 
 		return template

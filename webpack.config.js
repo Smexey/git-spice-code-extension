@@ -3,6 +3,7 @@
 'use strict';
 
 const path = require('path');
+const CopyWebpackPlugin = require('copy-webpack-plugin');
 
 /** @typedef {import('webpack').Configuration} WebpackConfig **/
 
@@ -72,6 +73,16 @@ const webviewConfig = {
 			}
 		]
 	},
+	plugins: [
+		new CopyWebpackPlugin({
+			patterns: [
+				{
+					from: path.resolve(__dirname, 'node_modules/@vscode/codicons/dist'),
+					to: path.resolve(__dirname, 'dist/codicons')
+				}
+			]
+		})
+	],
 	devtool: 'nosources-source-map',
 	infrastructureLogging: {
 		level: "log",
